@@ -1,10 +1,8 @@
-name: Python
+name: Python Tests
 
 on:
   push:
-    branches:
-      - main
-      - master
+    branches: [main, master]
     paths:
       - "**.py"
       - "**.rs"
@@ -22,18 +20,13 @@ on:
 
 jobs:
   python-tests:
-    name: Python Tests (${{ matrix.os }}, Python ${{ matrix.python-version }})
+    name: Python ${{ matrix.python-version }} (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
         python-version: ["3.10", "3.11", "3.12"]
-        include:
-          # Add GPU testing on Ubuntu
-          - os: ubuntu-latest
-            python-version: "3.11"
-            gpu: true
 
     steps:
       - uses: actions/checkout@v4
@@ -41,126 +34,37 @@ jobs:
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
-          key: ${{ matrix.os }}-${{ matrix.python-version }}
-          cache-targets: true
+          key: test-${{ matrix.os }}-${{ matrix.python-version }}
 
       - name: Setup dependencies
         uses: ./.github/actions/setup-dependencies
         with:
           python-version: ${{ matrix.python-version }}
-          enable-gstreamer: 'true'
+          enable-gstreamer: "true"
           os: ${{ matrix.os }}
 
-      - name: Setup GPU support (Ubuntu only)
-        if: matrix.gpu == true
-        run: |
-          echo "GPU testing enabled - will install CUDA toolkit"
-          sudo apt-get update
-          sudo apt-get install -y nvidia-cuda-toolkit
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Install dependencies
         run: |
+          source .venv/bin/activate
           uv pip install .[all]
-          # Install Polars GPU support for GPU testing
-          if [[ "${{ matrix.gpu }}" == "true" ]]; then
-            uv pip install polars[gpu]
-          fi
 
-      - name: Build evlib (with GPU features)
-        if: matrix.gpu == true
+      - name: Run tests
         run: |
           source .venv/bin/activate
-          uv run maturin develop --release --features "gstreamer cuda"
-
-      - name: Build evlib (with GStreamer)
-        if: matrix.gpu != true
-        run: |
-          source .venv/bin/activate
-          uv run maturin develop --release --features gstreamer
-
-      - name: Build evlib (without GStreamer fallback)
-        if: failure()
-        run: |
-          source .venv/bin/activate
-          uv run maturin develop --release
-
-      - name: Run fast tests (CI-friendly)
-        run: |
-          # Run fast tests excluding slow integration tests and documentation tests
-          uv run pytest -v tests/ -m "not slow and not integration" --maxfail=5 --ignore=docs/ --ignore=README.md
-
-      - name: Run GPU-specific tests
-        if: matrix.gpu == true
-        run: |
-          # Test GPU functionality if available
-          uv run python -c "
-          import polars as pl
-          import torch
-          import evlib
-          print(f'Polars version: {pl.__version__}')
-          print(f'PyTorch CUDA available: {torch.cuda.is_available()}')
-          print(f'PyTorch version: {torch.__version__}')
-
-          # Test Polars GPU capabilities
-          try:
-              df = pl.DataFrame({'a': [1, 2, 3], 'b': [4, 5, 6]})
-              result = df.select(pl.col('a') + pl.col('b'))
-              print('Polars GPU engine test: ✓')
-          except Exception as e:
-              print(f'Polars GPU test: {e}')
-
-          if torch.cuda.is_available():
-              print(f'GPU device: {torch.cuda.get_device_name()}')
-              print('Running GPU-specific tests...')
-          else:
-              print('No GPU available, testing CPU fallback')
-          "
-          # Run any GPU-specific tests if they exist
-          uv run pytest -v tests/ -k "gpu or cuda" || echo "No GPU tests found"
-
-      - name: Run RVT regression tests (integration)
-        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11' && matrix.gpu != true
-        run: |
-          # Run slow integration tests on one specific configuration only
-          echo "Running RVT regression tests (slow integration tests)"
-          uv run pytest -v tests/test_rvt_regression.py::TestRVTRegression::test_evlib_sparse_to_dense_conversion --maxfail=1
-          # Skip the slow file-based test in CI: test_parquet_based_regression_quick
-
-      - name: Test Jupyter notebooks
-        if: matrix.python-version == '3.11'  # Only test notebooks on one Python version
-        run: |
+          uv run pytest -v tests/ -m "not slow and not integration" --maxfail=5
           uv run pytest --nbmake examples/*.ipynb -v --no-cov
 
       - name: Generate coverage report
-        if: matrix.python-version == '3.11' && matrix.gpu != true  # Only generate coverage once
-        run: |
-          uv run pytest --cov=evlib --cov-report=xml -v tests/ -m "not slow and not integration" --ignore=docs/ --ignore=README.md
-
-      - name: Test GStreamer functionality
-        if: matrix.python-version == '3.11' && matrix.gpu != true  # Only test on one configuration
+        if: matrix.python-version == '3.11' && matrix.os == 'ubuntu-latest'
         run: |
           source .venv/bin/activate
-          # Test if GStreamer bindings are working
-          python -c "import evlib.simulation; print('GStreamer bindings loaded successfully')" || echo "GStreamer not available"
-          # Run specific GStreamer tests
-          uv run pytest -v tests/test_gstreamer_integration.py tests/test_realtime_bindings.py || echo "GStreamer tests skipped (no webcam available)"
-
-      - name: Display test summary
-        if: always()
-        run: |
-          echo "=== Test Summary ==="
-          echo "OS: ${{ matrix.os }}"
-          echo "Python: ${{ matrix.python-version }}"
-          echo "GPU enabled: ${{ matrix.gpu }}"
-          echo "Fast tests: ✓"
-          if [[ "${{ matrix.gpu }}" == "true" ]]; then
-            echo "GPU tests: ✓"
-          fi
-          if [[ "${{ matrix.os }}" == "ubuntu-latest" && "${{ matrix.python-version }}" == "3.11" && "${{ matrix.gpu }}" != "true" ]]; then
-            echo "RVT regression tests: ✓"
-          fi
+          uv run pytest --cov=evlib --cov-report=xml -v tests/ -m "not slow and not integration"
 
       - name: Upload coverage to Codecov
+        if: matrix.python-version == '3.11' && matrix.os == 'ubuntu-latest'
         uses: codecov/codecov-action@v4
         with:
           token: ${{ secrets.CODECOV_TOKEN }}

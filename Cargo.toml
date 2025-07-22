@@ -1,6 +1,6 @@
 [package]
 name            = "evlib"
-version         = "0.2.12"
+version         = "0.2.23"
 authors         = ["Tarek Allam <t.allam.jr@gmail.com>"]
 edition         = "2021"
 description     = "Event Camera Data Processing Library"
@@ -24,17 +24,6 @@ exclude         = [
 [lib]
 name           = "evlib"
 crate-type     = ["cdylib", "rlib"]
-
-# Binary targets (optional, only built when features are enabled)
-[[bin]]
-name           = "evlib-terminal"
-path           = "src/bin/evlib-terminal.rs"
-required-features = ["terminal", "gstreamer"]
-
-[[bin]]
-name           = "evlib-web"
-path           = "src/bin/evlib-web.rs"
-required-features = ["gstreamer", "terminal"]
 
 [[bench]]
 name = "memory_efficiency"
@@ -70,8 +59,8 @@ rand_distr     = "=0.4.3"
 fastrand       = "2.0"
 
 # Torch-style tensor ops (via Candle)
-candle-core    = "0.9.1"
-candle-nn      = "0.9.1"
+candle-core    = { version = "0.9.1", default-features = false }
+candle-nn      = { version = "0.9.1", default-features = false }
 
 # Optional PyTorch integration via tch-rs
 tch            = { version = "0.16", optional = true }
