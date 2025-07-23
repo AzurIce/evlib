@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 /// Test configuration for different data files
+#[allow(dead_code)]
 struct TestFileConfig {
     path: PathBuf,
     expected_format: EventFormat,
@@ -18,6 +19,7 @@ struct TestFileConfig {
 }
 
 /// Validation results for event data
+#[allow(dead_code)]
 #[derive(Debug)]
 struct ValidationResults {
     event_count: usize,
@@ -28,6 +30,7 @@ struct ValidationResults {
     execution_time: f64,
 }
 
+#[allow(dead_code)]
 #[derive(Debug)]
 struct DataIntegrity {
     has_nan: bool,
@@ -111,8 +114,8 @@ fn analyze_events(
     let t_max = events.iter().map(|e| e.t).fold(f64::NEG_INFINITY, f64::max);
     let duration = t_max - t_min;
 
-    let positive_count = events.iter().filter(|e| e.polarity == true).count();
-    let negative_count = events.iter().filter(|e| e.polarity == false).count();
+    let positive_count = events.iter().filter(|e| e.polarity).count();
+    let negative_count = events.iter().filter(|e| !e.polarity).count();
 
     ValidationResults {
         event_count: events.len(),
@@ -266,7 +269,7 @@ fn test_evt2_reader_comprehensive() {
                 Some(results.time_range.0 + 0.1),
                 Some(results.time_range.1 - 0.1),
             )
-            .with_polarity(Some(1));
+            .with_polarity(Some(true));
 
         let filtered_events = reader
             .read_with_config(config.path.to_str().unwrap(), &filter_config)
@@ -276,7 +279,7 @@ fn test_evt2_reader_comprehensive() {
             "Filtering didn't reduce event count"
         );
         assert!(
-            filtered_events.iter().all(|e| e.polarity == true),
+            filtered_events.iter().all(|e| e.polarity),
             "Polarity filtering failed"
         );
 
@@ -430,11 +433,11 @@ fn test_text_reader_comprehensive() {
     );
 
     // Check polarity encoding conversion
-    let unique_polarities: std::collections::HashSet<i8> =
+    let unique_polarities: std::collections::HashSet<bool> =
         events.iter().map(|e| e.polarity).collect();
     assert_eq!(
         unique_polarities,
-        [1, -1].iter().cloned().collect(),
+        [true, false].iter().cloned().collect(),
         "Polarity encoding conversion failed: {:?}",
         unique_polarities
     );
@@ -449,7 +452,7 @@ fn test_text_reader_comprehensive() {
     // Test filtering functionality
     let filter_config = LoadConfig::new()
         .with_spatial_bounds(Some(100), Some(200), Some(50), Some(150))
-        .with_polarity(Some(1));
+        .with_polarity(Some(true));
 
     let filtered_events =
         load_events_from_text(config.path.to_str().unwrap(), &filter_config).unwrap();
@@ -458,7 +461,7 @@ fn test_text_reader_comprehensive() {
         "Filtering didn't reduce event count"
     );
     assert!(
-        filtered_events.iter().all(|e| e.polarity == true),
+        filtered_events.iter().all(|e| e.polarity),
         "Polarity filtering failed"
     );
     assert!(

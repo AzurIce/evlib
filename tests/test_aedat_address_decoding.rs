@@ -38,7 +38,7 @@ fn test_aedat_1_0_address_decoding() {
 
     for (x, y, polarity, timestamp) in &test_cases {
         // Create address according to AEDAT 1.0 specification
-        let address = ((*y as u16) << 8) | ((*x as u16) << 1) | if *polarity == 1 { 1 } else { 0 };
+        let address = ((*y as u16) << 8) | ((*x as u16) << 1) | if *polarity > 0 { 1 } else { 0 };
         file.write_all(&address.to_le_bytes()).unwrap();
         file.write_all(&(*timestamp as u32).to_le_bytes()).unwrap();
     }
@@ -74,7 +74,8 @@ fn test_aedat_1_0_address_decoding() {
             i
         );
         assert_eq!(
-            event.polarity, *expected_polarity,
+            event.polarity,
+            *expected_polarity > 0,
             "Event {}: Polarity mismatch",
             i
         );
@@ -97,7 +98,7 @@ fn test_aedat_2_0_address_decoding() {
     writeln!(file, "#!AER-DAT2.0").unwrap();
     writeln!(file, "# sizeX 640").unwrap();
     writeln!(file, "# sizeY 480").unwrap();
-    writeln!(file, "").unwrap(); // Add empty line to mark end of header
+    writeln!(file).unwrap(); // Add empty line to mark end of header
 
     // Test various coordinate combinations
     // AEDAT 2.0 format: polarity (1 bit) + x (15 bits) + y (15 bits) + unused (1 bit)
@@ -113,7 +114,7 @@ fn test_aedat_2_0_address_decoding() {
 
     for (x, y, polarity, timestamp) in &test_cases {
         // Create address according to AEDAT 2.0 specification
-        let address = ((*y as u32) << 16) | ((*x as u32) << 1) | if *polarity == 1 { 1 } else { 0 };
+        let address = ((*y as u32) << 16) | ((*x as u32) << 1) | if *polarity > 0 { 1 } else { 0 };
         file.write_all(&(*timestamp as u32).to_be_bytes()).unwrap(); // Big-endian timestamp
         file.write_all(&address.to_be_bytes()).unwrap(); // Big-endian address
     }
@@ -149,7 +150,8 @@ fn test_aedat_2_0_address_decoding() {
             i
         );
         assert_eq!(
-            event.polarity, *expected_polarity,
+            event.polarity,
+            *expected_polarity > 0,
             "Event {}: Polarity mismatch",
             i
         );
@@ -172,7 +174,7 @@ fn test_aedat_3_1_address_decoding() {
     writeln!(file, "#!AER-DAT3.1").unwrap();
     writeln!(file, "# sizeX 346").unwrap();
     writeln!(file, "# sizeY 240").unwrap();
-    writeln!(file, "").unwrap(); // Add empty line to mark end of header
+    writeln!(file).unwrap(); // Add empty line to mark end of header
 
     // Test various coordinate combinations
     // AEDAT 3.1 format: validity (1 bit) + polarity (1 bit) + y (15 bits) + x (15 bits)
@@ -188,10 +190,8 @@ fn test_aedat_3_1_address_decoding() {
 
     for (x, y, polarity, timestamp) in &test_cases {
         // Create address according to AEDAT 3.1 specification
-        let address = ((*x as u32) << 17)
-            | ((*y as u32) << 2)
-            | (if *polarity == 1 { 1 } else { 0 } << 1)
-            | 1; // validity bit = 1
+        let address =
+            ((*x as u32) << 17) | ((*y as u32) << 2) | (if *polarity > 0 { 1 } else { 0 } << 1) | 1; // validity bit = 1
         file.write_all(&(*timestamp as u32).to_le_bytes()).unwrap(); // Little-endian timestamp
         file.write_all(&address.to_le_bytes()).unwrap(); // Little-endian address
     }
@@ -227,7 +227,8 @@ fn test_aedat_3_1_address_decoding() {
             i
         );
         assert_eq!(
-            event.polarity, *expected_polarity,
+            event.polarity,
+            *expected_polarity > 0,
             "Event {}: Polarity mismatch",
             i
         );
@@ -248,7 +249,7 @@ fn test_aedat_3_1_validity_bit() {
     // Create test AEDAT 3.1 file
     let mut file = File::create(&file_path).unwrap();
     writeln!(file, "#!AER-DAT3.1").unwrap();
-    writeln!(file, "").unwrap(); // Add empty line to mark end of header
+    writeln!(file).unwrap(); // Add empty line to mark end of header
 
     // Create events with mixed validity bits
     let test_events = vec![
@@ -261,7 +262,7 @@ fn test_aedat_3_1_validity_bit() {
     for (x, y, polarity, timestamp, valid) in &test_events {
         let address = ((*x as u32) << 17)
             | ((*y as u32) << 2)
-            | (if *polarity == 1 { 1 } else { 0 } << 1)
+            | (if *polarity > 0 { 1 } else { 0 } << 1)
             | if *valid { 1 } else { 0 }; // validity bit
         file.write_all(&(*timestamp as u32).to_le_bytes()).unwrap();
         file.write_all(&address.to_le_bytes()).unwrap();
@@ -320,7 +321,7 @@ fn test_aedat_4_0_address_decoding() {
 
     for (x, y, polarity, timestamp) in &test_cases {
         // Create event according to AEDAT 4.0 specification
-        let y_with_polarity = (*y as u16) | if *polarity == 1 { 0x8000 } else { 0 };
+        let y_with_polarity = (*y as u16) | if *polarity > 0 { 0x8000 } else { 0 };
 
         file.write_all(&(*timestamp as u32).to_le_bytes()).unwrap();
         file.write_all(&(*x as u16).to_le_bytes()).unwrap();
@@ -350,7 +351,8 @@ fn test_aedat_4_0_address_decoding() {
             i
         );
         assert_eq!(
-            event.polarity, *expected_polarity,
+            event.polarity,
+            *expected_polarity > 0,
             "Event {}: Polarity mismatch",
             i
         );
@@ -415,7 +417,7 @@ fn test_polarity_validation() {
     // Create events with both polarities
     let test_events = vec![
         (10, 20, 1, 1000), // ON polarity
-        (30, 40, 0, 2000), // OFF polarity (should become -1)
+        (30, 40, 0, 2000), // OFF polarity (should become false)
     ];
 
     for (x, y, polarity, timestamp) in &test_events {
@@ -433,8 +435,8 @@ fn test_polarity_validation() {
     let (events, _) = reader.read_file(&file_path).unwrap();
 
     assert_eq!(events.len(), 2);
-    assert_eq!(events[0].polarity, true); // ON polarity
-    assert_eq!(events[1].polarity, false); // OFF polarity converted to false
+    assert!(events[0].polarity); // ON polarity (1 -> true)
+    assert!(!events[1].polarity); // OFF polarity (0 -> false)
 }
 
 /// Test endianness handling
@@ -456,7 +458,7 @@ fn test_endianness_handling() {
     // Create AEDAT 2.0 file (big-endian)
     let mut file2 = File::create(&file_path_2).unwrap();
     writeln!(file2, "#!AER-DAT2.0").unwrap();
-    writeln!(file2, "").unwrap(); // Add empty line to mark end of header
+    writeln!(file2).unwrap(); // Add empty line to mark end of header
     let address2 = (10u32 << 16) | (20u32 << 1) | 1;
     file2.write_all(&1000u32.to_be_bytes()).unwrap();
     file2.write_all(&address2.to_be_bytes()).unwrap();
@@ -480,6 +482,6 @@ fn test_endianness_handling() {
     assert_eq!(events1[0].y, 10);
     assert_eq!(events2[0].x, 20);
     assert_eq!(events2[0].y, 10);
-    assert_eq!(events1[0].polarity, true);
-    assert_eq!(events2[0].polarity, true);
+    assert!(events1[0].polarity);
+    assert!(events2[0].polarity);
 }
