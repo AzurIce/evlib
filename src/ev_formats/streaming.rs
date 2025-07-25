@@ -164,13 +164,36 @@ impl PolarsEventStreamer {
         let final_df = if dataframes.len() == 1 {
             dataframes.into_iter().next().unwrap()
         } else {
-            // Convert DataFrames to LazyFrames for concatenation
-            let lazy_frames: Vec<LazyFrame> = dataframes.into_iter().map(|df| df.lazy()).collect();
+            // Convert DataFrames to LazyFrames for concatenation with explicit schema preservation
+            let lazy_frames: Vec<LazyFrame> = dataframes
+                .into_iter()
+                .map(|df| {
+                    // Ensure consistent schema before concatenation
+                    df.lazy().with_columns([
+                        col("x").cast(DataType::Int16),
+                        col("y").cast(DataType::Int16),
+                        col("polarity").cast(DataType::Int8),
+                        col("timestamp").cast(DataType::Duration(TimeUnit::Microseconds)),
+                    ])
+                })
+                .collect();
             concat(&lazy_frames, UnionArgs::default())?.collect()?
         };
 
         eprintln!("Streaming complete: {total_processed} events processed in {chunk_count} chunks");
-        Ok(final_df)
+
+        // Final schema enforcement to ensure correct types
+        let final_df_with_schema = final_df
+            .lazy()
+            .with_columns([
+                col("x").cast(DataType::Int16),
+                col("y").cast(DataType::Int16),
+                col("polarity").cast(DataType::Int8),
+                col("timestamp").cast(DataType::Duration(TimeUnit::Microseconds)),
+            ])
+            .collect()?;
+
+        Ok(final_df_with_schema)
     }
 
     /// Build a Polars DataFrame from a chunk of events
@@ -200,17 +223,19 @@ impl PolarsEventStreamer {
         let mut polarity_builder = PrimitiveChunkedBuilder::<Int8Type>::new("polarity", len);
 
         // Single iteration with direct population - zero intermediate copies
+        // Store polarity as raw bool first, convert vectorized later
         for event in events {
             x_builder.append_value(event.x as i16);
             y_builder.append_value(event.y as i16);
             timestamp_builder.append_value(self.convert_timestamp(event.t));
-            polarity_builder.append_value(self.convert_polarity(event.polarity));
+            // Store raw bool polarity (0/1) - will convert vectorized later
+            polarity_builder.append_value(if event.polarity { 1i8 } else { 0i8 });
         }
 
         // Build Series from builders
         let x_series = x_builder.finish().into_series();
         let y_series = y_builder.finish().into_series();
-        let polarity_series = polarity_builder.finish().into_series();
+        let polarity_series_raw = polarity_builder.finish().into_series();
 
         // Convert timestamp to Duration type
         let timestamp_series = timestamp_builder
@@ -218,8 +243,45 @@ impl PolarsEventStreamer {
             .into_series()
             .cast(&DataType::Duration(TimeUnit::Microseconds))?;
 
-        // Create DataFrame with all series
-        DataFrame::new(vec![x_series, y_series, timestamp_series, polarity_series])
+        // Create initial DataFrame with raw polarity
+        let df = DataFrame::new(vec![
+            x_series,
+            y_series,
+            timestamp_series,
+            polarity_series_raw,
+        ])?;
+
+        // VECTORIZED polarity conversion (much faster than per-event)
+        let df = match self.format {
+            EventFormat::EVT2 | EventFormat::EVT21 | EventFormat::EVT3 => {
+                // EVT2 family: Convert 0/1 → -1/1 using vectorized operations
+                df.lazy()
+                    .with_column(
+                        when(col("polarity").eq(lit(0)))
+                            .then(lit(-1i8))
+                            .otherwise(lit(1i8))
+                            .alias("polarity"),
+                    )
+                    .collect()?
+            }
+            EventFormat::HDF5 => {
+                // HDF5 format: Convert 0/1 → -1/1 for consistency
+                df.lazy()
+                    .with_column(
+                        when(col("polarity").eq(lit(0)))
+                            .then(lit(-1i8))
+                            .otherwise(lit(1i8))
+                            .alias("polarity"),
+                    )
+                    .collect()?
+            }
+            _ => {
+                // Text and other formats: use 0/1 encoding directly
+                df
+            }
+        };
+
+        Ok(df)
     }
 
     /// Create an empty DataFrame with the correct schema

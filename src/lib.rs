@@ -31,6 +31,9 @@ fn evlib(py: Python, m: &PyModule) -> PyResult<()> {
     // Register helper functions
     m.add_function(wrap_pyfunction!(version, py)?)?;
 
+    // Add top-level load_events function (wrapper around formats.load_events)
+    m.add_function(wrap_pyfunction!(ev_formats::python::load_events_py, py)?)?;
+
     // Register ev_core module as "core" in Python
     let core_submodule = PyModule::new(py, "core")?;
     #[cfg(feature = "python")]
@@ -61,6 +64,12 @@ fn evlib(py: Python, m: &PyModule) -> PyResult<()> {
     formats_submodule.add_function(wrap_pyfunction!(ev_formats::python::detect_format_py, py)?)?;
     formats_submodule.add_function(wrap_pyfunction!(
         ev_formats::python::get_format_description_py,
+        py
+    )?)?;
+
+    // Add ECF testing function
+    formats_submodule.add_function(wrap_pyfunction!(
+        ev_formats::python::test_prophesee_ecf_decode_py,
         py
     )?)?;
 

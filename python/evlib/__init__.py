@@ -110,76 +110,34 @@ histogram = evlib.create_stacked_histogram(processed_events, height=480, width=6
 
 import os
 
-# Import submodules (with graceful fallback)
+# Import the compiled Rust extension module
 try:
-    from . import models  # noqa: F401
+    import importlib.util
+    import glob
 
-    _models_available = True
-except ImportError:
-    _models_available = False
+    # Find the compiled module file
+    current_dir = os.path.dirname(__file__)
+    so_files = glob.glob(os.path.join(current_dir, "evlib.cpython-*.so"))
 
-try:
-    from . import representations  # noqa: F401
+    if so_files:
+        spec = importlib.util.spec_from_file_location("evlib", so_files[0])
+        rust_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(rust_module)
 
-    _representations_available = True
+        # Access submodules from the compiled module
+        core = rust_module.core
+        formats = rust_module.formats
 
-    # Import key representation functions directly
-    from .representations import benchmark_vs_rvt  # noqa: F401
-    from .representations import (
-        create_mixed_density_stack,  # noqa: F401
-        create_stacked_histogram,  # noqa: F401
-        create_voxel_grid,  # noqa: F401
-        preprocess_for_detection,  # noqa: F401
-    )
-except ImportError:
-    _representations_available = False
+        # Make key functions directly accessible
+        save_events_to_hdf5 = formats.save_events_to_hdf5
+        save_events_to_text = formats.save_events_to_text
+        detect_format = formats.detect_format
+        get_format_description = formats.get_format_description
+    else:
+        raise ImportError("Compiled Rust module not found")
 
-# Import filtering module
-try:
-    from . import filtering  # noqa: F401
-
-    _filtering_available = True
-
-    # Import key filtering functions directly
-    from .filtering import (  # noqa: F401
-        filter_by_time,  # noqa: F401
-        filter_by_roi,  # noqa: F401
-        filter_by_polarity,  # noqa: F401
-        filter_hot_pixels,  # noqa: F401
-        filter_noise,  # noqa: F401
-        preprocess_events,  # noqa: F401
-    )
-except ImportError:
-    _filtering_available = False
-
-# Import streaming utilities
-try:
-    from . import streaming_utils  # noqa: F401
-
-    _streaming_utils_available = True
-except ImportError:
-    _streaming_utils_available = False
-
-# Import filtering utilities
-try:
-    from . import filtering  # noqa: F401
-
-    _filtering_available = True
-
-    # Import key filtering functions directly
-    from .filtering import (
-        filter_by_time,  # noqa: F401
-        filter_by_roi,  # noqa: F401
-        filter_by_polarity,  # noqa: F401
-        filter_hot_pixels,  # noqa: F401
-        filter_noise,  # noqa: F401
-        preprocess_events,  # noqa: F401
-    )
-except ImportError:
-    _filtering_available = False
-
-# Import high-performance Polars preprocessing (consolidated into representations module)
-_representations_polars_available = False
+except ImportError as e:
+    raise ImportError(f"Failed to import evlib Rust module: {e}")
 
 # Configure Polars GPU acceleration if available
 try:
@@ -194,11 +152,9 @@ try:
             try:
                 # Try to set GPU engine if requested via environment variable
                 pl.Config.set_engine_affinity("gpu")
-                print("evlib: Polars GPU engine enabled via POLARS_ENGINE_AFFINITY environment variable")
                 return "gpu"
-            except Exception as e:
-                print(f"evlib: Could not enable Polars GPU engine: {e}")
-                print("evlib: Falling back to streaming engine")
+            except Exception:
+                pass
 
         # Auto-detect and try GPU engine if available (only if not explicitly requested)
         if not gpu_engine_requested:
@@ -213,7 +169,6 @@ try:
                 test_df = pl.DataFrame({"test": [1, 2, 3]})
                 pl.Config.set_engine_affinity("gpu")
                 _ = test_df.select(pl.col("test") * 2)
-                print("evlib: NVIDIA GPU detected and enabled automatically")
                 return "gpu"
             except (subprocess.CalledProcessError, FileNotFoundError, Exception):
                 # NVIDIA GPU not available, set streaming engine
@@ -221,7 +176,6 @@ try:
 
         # NVIDIA GPU not available, set streaming engine for optimal performance
         pl.Config.set_engine_affinity("streaming")
-        print("evlib: Using streaming engine for optimal performance")
         return "streaming"
 
     # Configure the engine and store result
@@ -230,54 +184,76 @@ try:
 
 except ImportError:
     _gpu_available = False
+    _engine_type = "streaming"
 
-# Import the compiled Rust extension module
-# The .so file is the actual PyO3 module that contains all the functions and submodules
+# Import optional submodules with graceful fallback
 try:
-    # Import the compiled Rust module
-
-    # Check what submodules are available in the compiled module
-    # The Rust code should have created 'core' and 'formats' submodules
-    try:
-        from .evlib import core, formats
-
-        _core_available = True
-        _formats_available = True
-
-        # Make key functions directly accessible
-        save_events_to_hdf5 = formats.save_events_to_hdf5
-        save_events_to_text = formats.save_events_to_text
-        detect_format = formats.detect_format
-        get_format_description = formats.get_format_description
-        _polars_available = True
-
-    except ImportError:
-        _core_available = False
-        _formats_available = False
-        _polars_available = False
-
+    from . import models
 except ImportError:
-    _formats_available = False
-    _core_available = False
-    _polars_available = False
-    _polars_utils_available = False
+    models = None
 
-# Import version from Rust module
 try:
-    from .evlib import __version__
+    from . import representations
+    from .representations import (
+        create_mixed_density_stack,
+        create_stacked_histogram,
+        create_voxel_grid,
+        preprocess_for_detection,
+        benchmark_vs_rvt,
+    )
 except ImportError:
-    # Fallback to reading from Cargo.toml if Rust module not available
+    representations = None
+
+try:
+    from . import filtering
+    from .filtering import (
+        filter_by_time,
+        filter_by_roi,
+        filter_by_polarity,
+        filter_hot_pixels,
+        filter_noise,
+        preprocess_events,
+    )
+except ImportError:
+    filtering = None
+
+try:
+    from . import hdf5_prophesee
+except ImportError:
+    hdf5_prophesee = None
+
+try:
+    from . import ecf_decoder
+except ImportError:
+    ecf_decoder = None
+
+try:
+    from . import hdf5_diagnostic
+except ImportError:
+    hdf5_diagnostic = None
+
+try:
+    from . import streaming_utils
+except ImportError:
+    streaming_utils = None
+
+# Import version
+try:
+    __version__ = getattr(formats, "__version__", None)
+    if not __version__:
+        raise ImportError("Version not found in compiled module")
+except ImportError:
+    # Fallback to reading from Cargo.toml
     import pathlib
 
     try:
-        # Try tomllib first (Python 3.11+), then fallback to tomli or manual parsing
         try:
             import tomllib
         except ImportError:
             try:
                 import tomli as tomllib
             except ImportError:
-                # Manual parsing fallback for Python 3.10
+                # Manual parsing fallback
                 import re
 
                 _cargo_toml_path = pathlib.Path(__file__).parent.parent.parent / "Cargo.toml"
@@ -297,64 +273,6 @@ except ImportError:
     except (FileNotFoundError, KeyError, AttributeError):
         __version__ = "unknown"
 
-# Export the available functionality
-__all__ = ["__version__"]
-
-if _models_available:
-    __all__.append("models")
-if _streaming_utils_available:
-    __all__.append("streaming_utils")
-if _filtering_available:
-    __all__.extend(
-        [
-            "filtering",
-            "filter_by_time",
-            "filter_by_roi",
-            "filter_by_polarity",
-            "filter_hot_pixels",
-            "filter_noise",
-            "preprocess_events",
-        ]
-    )
-if _representations_available:
-    __all__.extend(
-        [
-            "representations",
-            "create_stacked_histogram",
-            "create_mixed_density_stack",
-            "create_voxel_grid",
-            "preprocess_for_detection",
-            "benchmark_vs_rvt",
-        ]
-    )
-if _filtering_available:
-    __all__.extend(
-        [
-            "filtering",
-            "filter_by_time",
-            "filter_by_roi",
-            "filter_by_polarity",
-            "filter_hot_pixels",
-            "filter_noise",
-            "preprocess_events",
-        ]
-    )
-if _formats_available:
-    format_exports = [
-        "formats",
-        "load_events",
-        "save_events_to_hdf5",
-        "save_events_to_text",
-        "detect_format",
-        "get_format_description",
-        "get_recommended_engine",
-        "collect_with_optimal_engine",
-    ]
-    __all__.extend(format_exports)
-
-if _core_available:
-    __all__.append("core")
-
 
 def get_recommended_engine():
     """
@@ -363,10 +281,7 @@ def get_recommended_engine():
     Returns:
         str: 'gpu' if GPU is available, otherwise 'streaming' for large datasets
     """
-    try:
-        return _engine_type if _engine_type == "gpu" else "streaming"
-    except NameError:
-        return "streaming"  # Safe fallback for large event datasets
+    return _engine_type if _engine_type == "gpu" else "streaming"
 
 
 def collect_with_optimal_engine(lazy_frame):
@@ -383,7 +298,62 @@ def collect_with_optimal_engine(lazy_frame):
     return lazy_frame.collect(engine=engine)
 
 
-# Main load_events function that returns a Polars LazyFrame
+def setup_hdf5_plugins():
+    """
+    Set up HDF5 compression plugins for reading Prophesee files.
+
+    Call this function before loading Prophesee HDF5 files if you encounter
+    plugin-related errors.
+
+    Returns:
+        bool: True if setup was successful, False otherwise
+    """
+    try:
+        import hdf5plugin
+
+        # Set the environment variable
+        os.environ["HDF5_PLUGIN_PATH"] = hdf5plugin.PLUGIN_PATH
+
+        # Register plugins if available
+        if hasattr(hdf5plugin, "register"):
+            hdf5plugin.register()
+
+        return True
+
+    except ImportError:
+        return False
+    except Exception:
+        return False
+
+
+def diagnose_hdf5(file_path=None):
+    """
+    Diagnose HDF5 plugin setup and test a file if provided.
+
+    Args:
+        file_path: Optional path to Prophesee HDF5 file to test
+    """
+    try:
+        from .hdf5_diagnostic import (
+            diagnose_hdf5_plugins,
+            setup_hdf5_plugins as diag_setup,
+            test_prophesee_file,
+            print_solutions,
+        )
+
+        plugins_ok = diagnose_hdf5_plugins()
+
+        if plugins_ok:
+            diag_setup()
+            if file_path:
+                test_prophesee_file(file_path)
+
+        print_solutions()
+
+    except ImportError:
+        pass
+
+
 def load_events(path, **kwargs):
     """
     Load events as Polars LazyFrame.
@@ -404,10 +374,7 @@ def load_events(path, **kwargs):
         # Or let evlib handle engine selection automatically:
         df = evlib.collect_with_optimal_engine(events)
     """
-    if not _formats_available:
-        raise ImportError("Formats module not available")
-
-    # Use unified load_events function (now returns Polars data directly)
+    # Load data using Rust formats module
     data_dict = formats.load_events(path, **kwargs)
 
     # Convert the dictionary to Polars LazyFrame
@@ -415,10 +382,76 @@ def load_events(path, **kwargs):
 
     # Handle the duration column properly
     if "timestamp" in data_dict:
-        df = pl.DataFrame(data_dict)
+        # Define explicit schema to preserve efficient data types from Rust
+        schema = {
+            "x": pl.Int16,  # Coordinates: sufficient for event camera resolutions
+            "y": pl.Int16,  # Coordinates: sufficient for event camera resolutions
+            "timestamp": pl.Int64,  # Timestamp: needs full precision for microseconds
+            "polarity": pl.Int8,  # Polarity: -1/1 fits in single byte
+        }
+
+        df = pl.DataFrame(data_dict, schema=schema)
         # The timestamp is already converted to microseconds in Rust
         df = df.with_columns([pl.col("timestamp").cast(pl.Duration(time_unit="us"))])
         return df.lazy()
     else:
-        # Empty case
-        return pl.DataFrame(data_dict).lazy()
+        # Empty case - use same schema for consistency
+        schema = {
+            "x": pl.Int16,
+            "y": pl.Int16,
+            "timestamp": pl.Duration(time_unit="us"),
+            "polarity": pl.Int8,
+        }
+        return pl.DataFrame(data_dict, schema=schema).lazy()
+
+
+# Define exports
+__all__ = [
+    "__version__",
+    "core",
+    "formats",
+    "load_events",
+    "save_events_to_hdf5",
+    "save_events_to_text",
+    "detect_format",
+    "get_format_description",
+    "get_recommended_engine",
+    "collect_with_optimal_engine",
+    "setup_hdf5_plugins",
+    "diagnose_hdf5",
+]
+
+# Add optional modules to exports if available
+if models:
+    __all__.append("models")
+if representations:
+    __all__.extend(
+        [
+            "representations",
+            "create_stacked_histogram",
+            "create_mixed_density_stack",
+            "create_voxel_grid",
+            "preprocess_for_detection",
+            "benchmark_vs_rvt",
+        ]
+    )
+if filtering:
+    __all__.extend(
+        [
+            "filtering",
+            "filter_by_time",
+            "filter_by_roi",
+            "filter_by_polarity",
+            "filter_hot_pixels",
+            "filter_noise",
+            "preprocess_events",
+        ]
+    )
+if streaming_utils:
+    __all__.append("streaming_utils")
+if hdf5_prophesee:
+    __all__.append("hdf5_prophesee")
+if ecf_decoder:
+    __all__.append("ecf_decoder")
+if hdf5_diagnostic:
+    __all__.append("hdf5_diagnostic")
