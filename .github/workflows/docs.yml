@@ -28,7 +28,7 @@ jobs:
       - name: Setup dependencies
         uses: ./.github/actions/setup-dependencies
         with:
-          python-version: '3.11'
+          python-version: "3.11"
           os: ubuntu-latest
 
       - name: Set up Rust

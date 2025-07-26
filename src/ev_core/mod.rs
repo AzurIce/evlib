@@ -77,7 +77,7 @@ pub fn from_numpy_arrays(
     ts: numpy::PyReadonlyArray1<f64>,
     ps: numpy::PyReadonlyArray1<i64>,
 ) -> Events {
-    let n = xs.len();
+    let n = xs.as_array().len();
     let mut events = Events::with_capacity(n);
 
     let xs_array = xs.as_array();

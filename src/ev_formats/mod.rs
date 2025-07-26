@@ -509,6 +509,7 @@ fn call_python_prophesee_fallback(path: &str) -> hdf5_metno::Result<Events> {
         // Extract numpy arrays
         let x_array = data_dict
             .get_item("x")
+            .map_err(|e| hdf5_metno::Error::Internal(format!("Failed to get x item: {}", e)))?
             .ok_or_else(|| hdf5_metno::Error::Internal("Missing x array".to_string()))?
             .extract::<Vec<u16>>()
             .map_err(|e| {
@@ -517,6 +518,7 @@ fn call_python_prophesee_fallback(path: &str) -> hdf5_metno::Result<Events> {
 
         let y_array = data_dict
             .get_item("y")
+            .map_err(|e| hdf5_metno::Error::Internal(format!("Failed to get y item: {}", e)))?
             .ok_or_else(|| hdf5_metno::Error::Internal("Missing y array".to_string()))?
             .extract::<Vec<u16>>()
             .map_err(|e| {
@@ -525,6 +527,9 @@ fn call_python_prophesee_fallback(path: &str) -> hdf5_metno::Result<Events> {
 
         let t_array = data_dict
             .get_item("timestamp")
+            .map_err(|e| {
+                hdf5_metno::Error::Internal(format!("Failed to get timestamp item: {}", e))
+            })?
             .ok_or_else(|| hdf5_metno::Error::Internal("Missing timestamp array".to_string()))?
             .extract::<Vec<i64>>()
             .map_err(|e| {
@@ -533,6 +538,9 @@ fn call_python_prophesee_fallback(path: &str) -> hdf5_metno::Result<Events> {
 
         let p_array = data_dict
             .get_item("polarity")
+            .map_err(|e| {
+                hdf5_metno::Error::Internal(format!("Failed to get polarity item: {}", e))
+            })?
             .ok_or_else(|| hdf5_metno::Error::Internal("Missing polarity array".to_string()))?
             .extract::<Vec<i8>>()
             .map_err(|e| {
@@ -1028,23 +1036,29 @@ pub mod python {
 
         if len == 0 {
             // Create empty DataFrame with proper schema
-            let empty_x = Series::new("x", Vec::<i16>::new());
-            let empty_y = Series::new("y", Vec::<i16>::new());
-            let empty_timestamp = Series::new("timestamp", Vec::<i64>::new())
+            let empty_x = Series::new("x".into(), Vec::<i16>::new());
+            let empty_y = Series::new("y".into(), Vec::<i16>::new());
+            let empty_timestamp = Series::new("timestamp".into(), Vec::<i64>::new())
                 .cast(&DataType::Duration(TimeUnit::Microseconds))?;
-            let empty_polarity = Series::new("polarity", Vec::<i8>::new());
+            let empty_polarity = Series::new("polarity".into(), Vec::<i8>::new());
 
-            return DataFrame::new(vec![empty_x, empty_y, empty_timestamp, empty_polarity]);
+            return DataFrame::new(vec![
+                empty_x.into(),
+                empty_y.into(),
+                empty_timestamp.into(),
+                empty_polarity.into(),
+            ]);
         }
 
         // Use optimal data types for memory efficiency
         // x, y: Int16 (sufficient for coordinates, saves 50% memory vs Int32)
         // timestamp: Int64 (required for microsecond precision)
         // polarity: Int8 (sufficient for -1/0/1 values, saves 87.5% memory vs Int64)
-        let mut x_builder = PrimitiveChunkedBuilder::<Int16Type>::new("x", len);
-        let mut y_builder = PrimitiveChunkedBuilder::<Int16Type>::new("y", len);
-        let mut timestamp_builder = PrimitiveChunkedBuilder::<Int64Type>::new("timestamp", len);
-        let mut polarity_builder = PrimitiveChunkedBuilder::<Int8Type>::new("polarity", len);
+        let mut x_builder = PrimitiveChunkedBuilder::<Int16Type>::new("x".into(), len);
+        let mut y_builder = PrimitiveChunkedBuilder::<Int16Type>::new("y".into(), len);
+        let mut timestamp_builder =
+            PrimitiveChunkedBuilder::<Int64Type>::new("timestamp".into(), len);
+        let mut polarity_builder = PrimitiveChunkedBuilder::<Int8Type>::new("polarity".into(), len);
 
         // Single iteration with direct population - zero intermediate copies
         // Store polarity as raw bool first, convert vectorized later
@@ -1069,10 +1083,10 @@ pub mod python {
 
         // Create initial DataFrame with raw polarity
         let df = DataFrame::new(vec![
-            x_series,
-            y_series,
-            timestamp_series,
-            polarity_series_raw,
+            x_series.into(),
+            y_series.into(),
+            timestamp_series.into(),
+            polarity_series_raw.into(),
         ])?;
 
         // VECTORIZED polarity conversion (much faster than per-event)
@@ -1136,7 +1150,7 @@ pub mod python {
         let py_df = polars_module.call_method1("DataFrame", (data_dict, schema_dict))?;
         let py_lazyframe = py_df.call_method0("lazy")?;
 
-        Ok(py_lazyframe.to_object(py))
+        Ok(py_lazyframe.into())
     }
 
     fn polars_dataframe_to_python_dict_with_schema(
@@ -1146,7 +1160,8 @@ pub mod python {
         use polars::prelude::*;
         use pyo3::types::{PyDict, PyModule};
 
-        let mut data_dict = std::collections::HashMap::new();
+        let mut data_dict: std::collections::HashMap<String, PyObject> =
+            std::collections::HashMap::new();
         let schema_dict = PyDict::new(py);
 
         // Import polars for Python type creation
@@ -1166,7 +1181,7 @@ pub mod python {
                         .into_no_null_iter()
                         .collect();
                     let py_type = polars_module.getattr("Int16")?;
-                    (values.into_py(py), py_type)
+                    (values.into_pyobject(py)?.into(), py_type)
                 }
                 DataType::Int8 => {
                     let values: Vec<i8> = column
@@ -1179,7 +1194,7 @@ pub mod python {
                         .into_no_null_iter()
                         .collect();
                     let py_type = polars_module.getattr("Int8")?;
-                    (values.into_py(py), py_type)
+                    (values.into_pyobject(py)?.into(), py_type)
                 }
                 DataType::Duration(TimeUnit::Microseconds) => {
                     let values: Vec<i64> = column
@@ -1192,7 +1207,7 @@ pub mod python {
                         .into_no_null_iter()
                         .collect();
                     let duration_type = polars_module.call_method1("Duration", ("us",))?;
-                    (values.into_py(py), duration_type)
+                    (values.into_pyobject(py)?.into(), duration_type)
                 }
                 _ => {
                     return Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>(format!(
@@ -1203,10 +1218,10 @@ pub mod python {
             };
 
             data_dict.insert(column_name.to_string(), column_data);
-            schema_dict.set_item(column_name, py_dtype)?;
+            schema_dict.set_item(column_name.as_str(), py_dtype)?;
         }
 
-        Ok((data_dict.into_py(py), schema_dict.to_object(py)))
+        Ok((data_dict.into_pyobject(py)?.into(), schema_dict.into()))
     }
 
     /// Load events from a file with filtering support (using Polars backend)
@@ -1339,8 +1354,8 @@ pub mod python {
         path: &str,
     ) -> PyResult<()> {
         // Validate array lengths
-        let n = ts.len();
-        if xs.len() != n || ys.len() != n || ps.len() != n {
+        let n = ts.len()?;
+        if xs.len()? != n || ys.len()? != n || ps.len()? != n {
             return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
                 "Arrays must have the same length",
             ));
@@ -1442,8 +1457,8 @@ pub mod python {
         path: &str,
     ) -> PyResult<()> {
         // Validate array lengths
-        let n = ts.len();
-        if xs.len() != n || ys.len() != n || ps.len() != n {
+        let n = ts.len()?;
+        if xs.len()? != n || ys.len()? != n || ps.len()? != n {
             return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
                 "Arrays must have the same length",
             ));

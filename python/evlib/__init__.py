@@ -124,9 +124,22 @@ try:
         rust_module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(rust_module)
 
+        # CRITICAL FIX: Make this module appear as a package so Python allows submodule imports
+        import sys
+
+        current_module = sys.modules[__name__]
+        if not hasattr(current_module, "__path__"):
+            current_module.__path__ = [current_dir]
+
         # Access submodules from the compiled module
         core = rust_module.core
         formats = rust_module.formats
+        representations = rust_module.representations
+
+        # CRITICAL: Register submodules in sys.modules so they can be imported with dot notation
+        sys.modules[__name__ + ".core"] = core
+        sys.modules[__name__ + ".formats"] = formats
+        sys.modules[__name__ + ".representations"] = representations
 
         # Make key functions directly accessible
         save_events_to_hdf5 = formats.save_events_to_hdf5
@@ -186,24 +199,13 @@ except ImportError:
     _gpu_available = False
     _engine_type = "streaming"
 
-# Import optional submodules with graceful fallback
+# Import optional Python-only submodules with graceful fallback
 try:
     from . import models
 except ImportError:
     models = None
 
-try:
-    from . import representations
-    from .representations import (
-        create_mixed_density_stack,
-        create_stacked_histogram,
-        create_voxel_grid,
-        preprocess_for_detection,
-        benchmark_vs_rvt,
-    )
-except ImportError:
-    representations = None
-
+# Import Python filtering module (not yet implemented in Rust)
 try:
     from . import filtering
     from .filtering import (
@@ -216,6 +218,17 @@ try:
     )
 except ImportError:
     filtering = None
+
+# Use Rust representations submodule (no Python representations.py)
+# Import individual functions from Rust submodules for convenience
+# Import from Rust representations submodule (functions have _py suffix)
+create_mixed_density_stack = representations.create_mixed_density_stack_py
+create_stacked_histogram = representations.create_stacked_histogram_py
+create_voxel_grid = representations.create_voxel_grid_py
+
+# These were in the Python version but not yet in Rust
+# preprocess_for_detection = representations.preprocess_for_detection
+# benchmark_vs_rvt = representations.benchmark_vs_rvt
 
 try:
     from . import hdf5_prophesee

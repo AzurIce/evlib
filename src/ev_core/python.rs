@@ -31,7 +31,7 @@ pub fn events_to_block_py(
         block[[i, 3]] = if ev.polarity { 1.0 } else { 0.0 };
     }
 
-    Ok(block.into_pyarray(py).to_object(py))
+    Ok(block.into_pyarray(py).into())
 }
 
 /// Parameters for adding random events to an event stream
@@ -166,26 +166,26 @@ fn add_random_events_impl(
                 .collect::<Array1<i64>>();
 
             // Convert arrays to Python objects
-            let xs_py = sorted_xs.into_pyarray(py).to_object(py);
-            let ys_py = sorted_ys.into_pyarray(py).to_object(py);
-            let ts_py = sorted_ts.into_pyarray(py).to_object(py);
-            let ps_py = sorted_ps.into_pyarray(py).to_object(py);
+            let xs_py: PyObject = sorted_xs.into_pyarray(py).into();
+            let ys_py: PyObject = sorted_ys.into_pyarray(py).into();
+            let ts_py: PyObject = sorted_ts.into_pyarray(py).into();
+            let ps_py: PyObject = sorted_ps.into_pyarray(py).into();
 
             // Create result tuple
-            let result = PyTuple::new(py, &[xs_py, ys_py, ts_py, ps_py]);
+            let tuple = PyTuple::new(py, [xs_py, ys_py, ts_py, ps_py])?;
 
-            Ok(result.into())
+            Ok(tuple.into())
         } else {
             // Convert arrays to Python objects without sorting
-            let xs_py = merged_xs.into_pyarray(py).to_object(py);
-            let ys_py = merged_ys.into_pyarray(py).to_object(py);
-            let ts_py = merged_ts.into_pyarray(py).to_object(py);
-            let ps_py = merged_ps.into_pyarray(py).to_object(py);
+            let xs_py: PyObject = merged_xs.into_pyarray(py).into();
+            let ys_py: PyObject = merged_ys.into_pyarray(py).into();
+            let ts_py: PyObject = merged_ts.into_pyarray(py).into();
+            let ps_py: PyObject = merged_ps.into_pyarray(py).into();
 
             // Create result tuple
-            let result = PyTuple::new(py, &[xs_py, ys_py, ts_py, ps_py]);
+            let tuple = PyTuple::new(py, [xs_py, ys_py, ts_py, ps_py])?;
 
-            Ok(result.into())
+            Ok(tuple.into())
         }
     } else {
         // Return only the new events
@@ -217,26 +217,26 @@ fn add_random_events_impl(
                 .collect::<Array1<i64>>();
 
             // Convert arrays to Python objects
-            let xs_py = sorted_xs.into_pyarray(py).to_object(py);
-            let ys_py = sorted_ys.into_pyarray(py).to_object(py);
-            let ts_py = sorted_ts.into_pyarray(py).to_object(py);
-            let ps_py = sorted_ps.into_pyarray(py).to_object(py);
+            let xs_py: PyObject = sorted_xs.into_pyarray(py).into();
+            let ys_py: PyObject = sorted_ys.into_pyarray(py).into();
+            let ts_py: PyObject = sorted_ts.into_pyarray(py).into();
+            let ps_py: PyObject = sorted_ps.into_pyarray(py).into();
 
             // Create result tuple
-            let result = PyTuple::new(py, &[xs_py, ys_py, ts_py, ps_py]);
+            let tuple = PyTuple::new(py, [xs_py, ys_py, ts_py, ps_py])?;
 
-            Ok(result.into())
+            Ok(tuple.into())
         } else {
             // Convert arrays to Python objects
-            let xs_py = xs_new_array.into_pyarray(py).to_object(py);
-            let ys_py = ys_new_array.into_pyarray(py).to_object(py);
-            let ts_py = ts_new_array.into_pyarray(py).to_object(py);
-            let ps_py = ps_new_array.into_pyarray(py).to_object(py);
+            let xs_py: PyObject = xs_new_array.into_pyarray(py).into();
+            let ys_py: PyObject = ys_new_array.into_pyarray(py).into();
+            let ts_py: PyObject = ts_new_array.into_pyarray(py).into();
+            let ps_py: PyObject = ps_new_array.into_pyarray(py).into();
 
             // Create result tuple
-            let result = PyTuple::new(py, &[xs_py, ys_py, ts_py, ps_py]);
+            let tuple = PyTuple::new(py, [xs_py, ys_py, ts_py, ps_py])?;
 
-            Ok(result.into())
+            Ok(tuple.into())
         }
     }
 }
@@ -269,15 +269,15 @@ pub fn remove_events(
         let empty_ps = Array1::<i64>::zeros(0);
 
         // Convert arrays to Python objects
-        let xs_py = empty_xs.into_pyarray(py).to_object(py);
-        let ys_py = empty_ys.into_pyarray(py).to_object(py);
-        let ts_py = empty_ts.into_pyarray(py).to_object(py);
-        let ps_py = empty_ps.into_pyarray(py).to_object(py);
+        let xs_py: PyObject = empty_xs.into_pyarray(py).into();
+        let ys_py: PyObject = empty_ys.into_pyarray(py).into();
+        let ts_py: PyObject = empty_ts.into_pyarray(py).into();
+        let ps_py: PyObject = empty_ps.into_pyarray(py).into();
 
         // Create result tuple
-        let result = PyTuple::new(py, &[xs_py, ys_py, ts_py, ps_py]);
+        let tuple = PyTuple::new(py, [xs_py, ys_py, ts_py, ps_py])?;
 
-        return Ok(result.into());
+        return Ok(tuple.into());
     }
 
     let to_select = n - to_remove;
@@ -309,15 +309,15 @@ pub fn remove_events(
 
     if add_noise == 0 {
         // Convert arrays to Python objects
-        let xs_py = selected_xs.into_pyarray(py).to_object(py);
-        let ys_py = selected_ys.into_pyarray(py).to_object(py);
-        let ts_py = selected_ts.into_pyarray(py).to_object(py);
-        let ps_py = selected_ps.into_pyarray(py).to_object(py);
+        let xs_py: PyObject = selected_xs.into_pyarray(py).into();
+        let ys_py: PyObject = selected_ys.into_pyarray(py).into();
+        let ts_py: PyObject = selected_ts.into_pyarray(py).into();
+        let ps_py: PyObject = selected_ps.into_pyarray(py).into();
 
         // Create result tuple
-        let result = PyTuple::new(py, &[xs_py, ys_py, ts_py, ps_py]);
+        let tuple = PyTuple::new(py, [xs_py, ys_py, ts_py, ps_py])?;
 
-        Ok(result.into())
+        Ok(tuple.into())
     } else {
         // Generate random events for noise
         let max_x = xs_array.fold(0, |acc, &x| acc.max(x));
@@ -383,25 +383,26 @@ pub fn remove_events(
             .collect::<Array1<i64>>();
 
         // Convert arrays to Python objects
-        let xs_py = sorted_xs.into_pyarray(py).to_object(py);
-        let ys_py = sorted_ys.into_pyarray(py).to_object(py);
-        let ts_py = sorted_ts.into_pyarray(py).to_object(py);
-        let ps_py = sorted_ps.into_pyarray(py).to_object(py);
+        let xs_py: PyObject = sorted_xs.into_pyarray(py).into();
+        let ys_py: PyObject = sorted_ys.into_pyarray(py).into();
+        let ts_py: PyObject = sorted_ts.into_pyarray(py).into();
+        let ps_py: PyObject = sorted_ps.into_pyarray(py).into();
 
         // Create result tuple
-        let result = PyTuple::new(py, &[xs_py, ys_py, ts_py, ps_py]);
+        let tuple = PyTuple::new(py, [xs_py, ys_py, ts_py, ps_py])?;
 
-        Ok(result.into())
+        Ok(tuple.into())
     }
 }
+
 /// Merge multiple sets of events into a single chronologically sorted list
 #[pyfunction]
 #[pyo3(name = "merge_events")]
-pub fn merge_events(py: Python<'_>, event_sets: &PyTuple) -> PyResult<PyObject> {
+pub fn merge_events(py: Python<'_>, event_sets: &Bound<'_, PyTuple>) -> PyResult<PyObject> {
     // Collect all event sets
     let mut all_sets: Vec<Events> = Vec::new();
     for event_set in event_sets.iter() {
-        let tuple = event_set.extract::<&PyTuple>()?;
+        let tuple = event_set.downcast::<PyTuple>()?;
         if tuple.len() != 4 {
             return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
                 "Each event set must be a tuple of (xs, ys, ts, ps)",
@@ -421,10 +422,14 @@ pub fn merge_events(py: Python<'_>, event_sets: &PyTuple) -> PyResult<PyObject> 
     let ys: Vec<i64> = merged.iter().map(|e| e.y as i64).collect();
     let ts: Vec<f64> = merged.iter().map(|e| e.t).collect();
     let ps: Vec<i64> = merged.iter().map(|e| e.polarity as i64).collect();
-    let xs_py = Array1::from(xs).into_pyarray(py).to_object(py);
-    let ys_py = Array1::from(ys).into_pyarray(py).to_object(py);
-    let ts_py = Array1::from(ts).into_pyarray(py).to_object(py);
-    let ps_py = Array1::from(ps).into_pyarray(py).to_object(py);
-    let result = PyTuple::new(py, &[xs_py, ys_py, ts_py, ps_py]);
-    Ok(result.into())
+
+    // Convert arrays to Python objects
+    let xs_py: PyObject = Array1::from(xs).into_pyarray(py).into();
+    let ys_py: PyObject = Array1::from(ys).into_pyarray(py).into();
+    let ts_py: PyObject = Array1::from(ts).into_pyarray(py).into();
+    let ps_py: PyObject = Array1::from(ps).into_pyarray(py).into();
+
+    // Create result tuple
+    let tuple = PyTuple::new(py, [xs_py, ys_py, ts_py, ps_py])?;
+    Ok(tuple.into())
 }

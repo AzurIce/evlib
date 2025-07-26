@@ -216,10 +216,11 @@ impl PolarsEventStreamer {
         }
 
         // Use optimal data types for memory efficiency
-        let mut x_builder = PrimitiveChunkedBuilder::<Int16Type>::new("x", len);
-        let mut y_builder = PrimitiveChunkedBuilder::<Int16Type>::new("y", len);
-        let mut timestamp_builder = PrimitiveChunkedBuilder::<Int64Type>::new("timestamp", len);
-        let mut polarity_builder = PrimitiveChunkedBuilder::<Int8Type>::new("polarity", len);
+        let mut x_builder = PrimitiveChunkedBuilder::<Int16Type>::new("x".into(), len);
+        let mut y_builder = PrimitiveChunkedBuilder::<Int16Type>::new("y".into(), len);
+        let mut timestamp_builder =
+            PrimitiveChunkedBuilder::<Int64Type>::new("timestamp".into(), len);
+        let mut polarity_builder = PrimitiveChunkedBuilder::<Int8Type>::new("polarity".into(), len);
 
         // Single iteration with direct population - zero intermediate copies
         // Store polarity as raw bool first, convert vectorized later
@@ -244,10 +245,10 @@ impl PolarsEventStreamer {
 
         // Create initial DataFrame with raw polarity
         let df = DataFrame::new(vec![
-            x_series,
-            y_series,
-            timestamp_series,
-            polarity_series_raw,
+            x_series.into(),
+            y_series.into(),
+            timestamp_series.into(),
+            polarity_series_raw.into(),
         ])?;
 
         // VECTORIZED polarity conversion (much faster than per-event)
@@ -286,13 +287,18 @@ impl PolarsEventStreamer {
     /// Create an empty DataFrame with the correct schema
     #[cfg(feature = "polars")]
     fn create_empty_dataframe(&self) -> PolarsResult<DataFrame> {
-        let empty_x = Series::new("x", Vec::<i16>::new());
-        let empty_y = Series::new("y", Vec::<i16>::new());
-        let empty_timestamp = Series::new("timestamp", Vec::<i64>::new())
+        let empty_x = Series::new("x".into(), Vec::<i16>::new());
+        let empty_y = Series::new("y".into(), Vec::<i16>::new());
+        let empty_timestamp = Series::new("timestamp".into(), Vec::<i64>::new())
             .cast(&DataType::Duration(TimeUnit::Microseconds))?;
-        let empty_polarity = Series::new("polarity", Vec::<i8>::new());
+        let empty_polarity = Series::new("polarity".into(), Vec::<i8>::new());
 
-        DataFrame::new(vec![empty_x, empty_y, empty_timestamp, empty_polarity])
+        DataFrame::new(vec![
+            empty_x.into(),
+            empty_y.into(),
+            empty_timestamp.into(),
+            empty_polarity.into(),
+        ])
     }
 
     /// Convert event polarity based on format-specific encoding requirements
@@ -448,7 +454,7 @@ mod tests {
         assert_eq!(df.width(), 4);
 
         // Verify column names
-        let columns: Vec<&str> = df.get_column_names();
+        let columns: Vec<&str> = df.get_column_names().iter().map(|s| s.as_str()).collect();
         assert_eq!(columns, vec!["x", "y", "timestamp", "polarity"]);
     }
 
