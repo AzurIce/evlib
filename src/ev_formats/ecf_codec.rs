@@ -32,6 +32,9 @@ pub struct EncodingFlags {
 }
 
 impl EncodingFlags {
+    /// Convert flags to u32 representation for encoding
+    /// TODO: This will be used when implementing advanced ECF encoding modes
+    #[allow(dead_code)]
     fn to_u32(self) -> u32 {
         let mut flags = 0u32;
         if self.delta_timestamps {
@@ -92,21 +95,22 @@ impl ECFDecoder {
         let header = cursor.read_u32::<LittleEndian>()?;
 
         // Extract fields from the bit-packed header
-        let num_events = (header >> 2) as usize; // Bits 2-31
+        let num_events = (header >> 3) as usize; // Bits 3-31
+        let delta_timestamps = (header >> 2) & 1 != 0; // Bit 2
         let ys_xs_and_ps_packed = (header >> 1) & 1 != 0; // Bit 1
         let xs_and_ps_packed = header & 1 != 0; // Bit 0
 
         // Convert to our encoding flags structure
         let encoding_flags = EncodingFlags {
-            delta_timestamps: true, // Prophesee always uses delta timestamps
+            delta_timestamps,
             packed_coordinates: ys_xs_and_ps_packed || xs_and_ps_packed,
             masked_x_coords: false, // Will be determined later based on data
         };
 
         if self.debug {
             println!(
-                "ECF: Header=0x{:08x}, Events={}, Y/X/P packed={}, X/P packed={}",
-                header, num_events, ys_xs_and_ps_packed, xs_and_ps_packed
+                "ECF: Header=0x{:08x}, Events={}, Delta={}, Y/X/P packed={}, X/P packed={}",
+                header, num_events, delta_timestamps, ys_xs_and_ps_packed, xs_and_ps_packed
             );
         }
 
@@ -284,7 +288,12 @@ impl ECFEncoder {
     /// Encode events using ECF compression
     pub fn encode(&self, events: &[EventCD]) -> Result<Vec<u8>, io::Error> {
         if events.is_empty() {
-            return Ok(Vec::new());
+            // Write empty header for empty events
+            let mut output = Vec::new();
+            let mut cursor = Cursor::new(&mut output);
+            let header = 0u32; // 0 events, no flags set
+            cursor.write_u32::<LittleEndian>(header)?;
+            return Ok(output);
         }
 
         if events.len() > MAX_BUFFER_SIZE {
@@ -304,9 +313,13 @@ impl ECFEncoder {
         // Determine encoding strategy (simplified)
         let flags = self.determine_encoding_flags(events);
 
-        // Write header
-        cursor.write_u32::<LittleEndian>(events.len() as u32)?;
-        cursor.write_u32::<LittleEndian>(flags.to_u32())?;
+        // Write header as single bit-packed u32 to match decoder expectations
+        // Bits 3-31: number of events, Bit 2: delta_timestamps, Bit 1: ys_xs_and_ps_packed, Bit 0: xs_and_ps_packed
+        let header = ((events.len() as u32) << 3)
+            | ((flags.delta_timestamps as u32) << 2)
+            | ((flags.packed_coordinates as u32) << 1)
+            | (flags.packed_coordinates as u32);
+        cursor.write_u32::<LittleEndian>(header)?;
 
         if flags.delta_timestamps {
             self.encode_with_delta_timestamps(&mut cursor, events, flags)?;

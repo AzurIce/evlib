@@ -106,6 +106,19 @@ fn evlib(m: &Bound<'_, PyModule>) -> PyResult<()> {
         &formats_submodule
     )?)?;
 
+    // Add Apache Arrow integration functions (requires both python and arrow features)
+    #[cfg(all(feature = "python", feature = "arrow"))]
+    {
+        formats_submodule.add_function(wrap_pyfunction!(
+            ev_formats::python::load_events_to_pyarrow,
+            &formats_submodule
+        )?)?;
+        formats_submodule.add_function(wrap_pyfunction!(
+            ev_formats::python::pyarrow_to_events_py,
+            &formats_submodule
+        )?)?;
+    }
+
     m.add_submodule(&formats_submodule)?;
 
     // Build info

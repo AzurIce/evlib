@@ -5,6 +5,8 @@ use crate::ev_core::{Event, Events};
 use hdf5_metno::File as H5File;
 #[cfg(feature = "python")]
 use pyo3::prelude::*;
+#[cfg(all(feature = "python", feature = "arrow"))]
+use pyo3_arrow::PyRecordBatch;
 // memmap2 removed - no longer using unsafe binary format
 use std::fs::File;
 use std::io::{BufRead, BufReader, Result as IoResult};
@@ -46,6 +48,15 @@ pub use polarity_handler::{
 pub mod streaming;
 pub use streaming::{
     estimate_memory_usage, should_use_streaming, PolarsEventStreamer, StreamingConfig,
+};
+
+// Apache Arrow integration for zero-copy data transfer
+#[cfg(feature = "arrow")]
+pub mod arrow_builder;
+#[cfg(feature = "arrow")]
+pub use arrow_builder::{
+    arrow_to_events, create_event_arrow_schema, ArrowBuilderError, ArrowEventBuilder,
+    ArrowEventStreamer,
 };
 
 // ECF (Event Compression Format) codec for Prophesee HDF5 files
@@ -862,6 +873,68 @@ pub fn load_events_with_config(
     }
 }
 
+/// Load events to Apache Arrow RecordBatch with automatic format detection
+///
+/// This function provides zero-copy data transfer to Arrow format, enabling
+/// efficient interoperability with PyArrow, DuckDB, and other Arrow ecosystem tools.
+///
+/// # Arguments
+/// * `path` - Path to the event file
+/// * `config` - Configuration with filtering options
+///
+/// # Returns
+/// Result containing an Arrow RecordBatch with event data
+#[cfg(feature = "arrow")]
+pub fn load_events_to_arrow(
+    path: &str,
+    config: &LoadConfig,
+) -> Result<arrow::record_batch::RecordBatch, Box<dyn std::error::Error>> {
+    use crate::ev_formats::arrow_builder::{ArrowEventBuilder, ArrowEventStreamer};
+    use crate::ev_formats::streaming::should_use_streaming;
+
+    // Use format detector to determine the file format
+    let detection_result = format_detector::detect_event_format(path)?;
+
+    // Load events using existing pipeline
+    let events = load_events_with_config(path, config)?;
+
+    // Check if we should use streaming based on event count
+    let event_count = events.len();
+    let default_threshold = 5_000_000; // 5M events
+    let streaming_threshold = config.chunk_size.unwrap_or(default_threshold);
+
+    if should_use_streaming(event_count, Some(streaming_threshold)) {
+        // Use streaming for large datasets
+        let chunk_size =
+            crate::ev_formats::streaming::PolarsEventStreamer::calculate_optimal_chunk_size(
+                event_count,
+                512,
+            );
+        let streamer = ArrowEventStreamer::new(chunk_size, detection_result.format);
+        streamer
+            .stream_to_arrow(events.into_iter())
+            .map_err(|e| -> Box<dyn std::error::Error> { Box::new(e) })
+    } else {
+        // Direct construction for smaller datasets
+        ArrowEventBuilder::from_events_zero_copy(&events, detection_result.format)
+            .map_err(|e| -> Box<dyn std::error::Error> { Box::new(e) })
+    }
+}
+
+/// Load events to Apache Arrow RecordBatch (simple version)
+///
+/// # Arguments
+/// * `path` - Path to the event file
+///
+/// # Returns
+/// Result containing an Arrow RecordBatch with event data
+#[cfg(feature = "arrow")]
+pub fn load_events_to_arrow_simple(
+    path: &str,
+) -> Result<arrow::record_batch::RecordBatch, Box<dyn std::error::Error>> {
+    load_events_to_arrow(path, &LoadConfig::new())
+}
+
 /// Struct for iterating through a text file of events line by line
 /// without loading everything into memory at once
 pub struct EventFileIterator {
@@ -1553,5 +1626,141 @@ pub mod python {
                 e
             ))),
         }
+    }
+
+    /// Load events as PyArrow Table for zero-copy data transfer
+    ///
+    /// This function provides direct PyArrow Table creation, enabling efficient
+    /// zero-copy data transfer to Python and integration with PyArrow ecosystem.
+    ///
+    /// Args:
+    ///     path: Path to the event file
+    ///     t_start: Start time filter (inclusive)
+    ///     t_end: End time filter (inclusive)
+    ///     min_x, max_x, min_y, max_y: Spatial bounds filters
+    ///     polarity: Polarity filter (1 for positive, -1 for negative, None for both)
+    ///     sort: Sort events by timestamp after loading
+    ///     x_col, y_col, t_col, p_col: Custom column indices for text files
+    ///     header_lines: Number of header lines to skip in text files
+    ///
+    /// Returns:
+    ///     PyArrow Table with event data
+    #[cfg(all(feature = "python", feature = "arrow"))]
+    #[pyfunction]
+    #[pyo3(
+        signature = (
+            path,
+            t_start=None,
+            t_end=None,
+            min_x=None,
+            max_x=None,
+            min_y=None,
+            max_y=None,
+            polarity=None,
+            sort=false,
+            x_col=None,
+            y_col=None,
+            t_col=None,
+            p_col=None,
+            header_lines=0
+        ),
+        name = "load_events_to_arrow"
+    )]
+    #[allow(clippy::too_many_arguments)]
+    pub fn load_events_to_pyarrow(
+        py: Python<'_>,
+        path: &str,
+        t_start: Option<f64>,
+        t_end: Option<f64>,
+        min_x: Option<u16>,
+        max_x: Option<u16>,
+        min_y: Option<u16>,
+        max_y: Option<u16>,
+        polarity: Option<i8>,
+        sort: bool,
+        x_col: Option<usize>,
+        y_col: Option<usize>,
+        t_col: Option<usize>,
+        p_col: Option<usize>,
+        header_lines: usize,
+    ) -> PyResult<PyObject> {
+        // Convert i8 polarity filter to bool
+        let polarity_bool = polarity.map(|p| p > 0);
+
+        let config = LoadConfig::new()
+            .with_time_window(t_start, t_end)
+            .with_spatial_bounds(min_x, max_x, min_y, max_y)
+            .with_polarity(polarity_bool)
+            .with_sorting(sort)
+            .with_custom_columns(t_col, x_col, y_col, p_col)
+            .with_header_lines(header_lines);
+
+        // Load events to Arrow RecordBatch using existing Rust implementation
+        let record_batch = load_events_to_arrow(path, &config).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyIOError, _>(format!(
+                "Failed to load events to Arrow: {}",
+                e
+            ))
+        })?;
+
+        // Convert Rust Arrow RecordBatch to Python using pyo3-arrow
+        let py_record_batch = PyRecordBatch::new(record_batch);
+
+        // Convert to PyArrow object using pyo3-arrow's to_pyarrow method
+        py_record_batch.to_pyarrow(py).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to convert to PyArrow: {}",
+                e
+            ))
+        })
+    }
+
+    /// Convert PyArrow RecordBatch to events
+    ///
+    /// Args:
+    ///     record_batch: PyArrow RecordBatch to convert
+    ///
+    /// Returns:
+    ///     Dictionary with event arrays for Polars LazyFrame creation
+    #[cfg(all(feature = "python", feature = "arrow"))]
+    #[pyfunction]
+    #[pyo3(name = "pyarrow_to_events")]
+    pub fn pyarrow_to_events_py(py: Python<'_>, record_batch: PyRecordBatch) -> PyResult<PyObject> {
+        use crate::ev_formats::arrow_builder::arrow_to_events;
+
+        // Extract the underlying Arrow RecordBatch from PyRecordBatch
+        // PyRecordBatch automatically converts from Python Arrow object
+        let arrow_batch = record_batch.as_ref();
+
+        // Convert Arrow RecordBatch to Events vector using our existing function
+        let events = arrow_to_events(arrow_batch).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to convert Arrow to events: {}",
+                e
+            ))
+        })?;
+
+        // Convert events to Python dict format for compatibility
+        let mut data_dict: std::collections::HashMap<String, PyObject> =
+            std::collections::HashMap::new();
+
+        let mut x_vec = Vec::with_capacity(events.len());
+        let mut y_vec = Vec::with_capacity(events.len());
+        let mut t_vec = Vec::with_capacity(events.len());
+        let mut p_vec = Vec::with_capacity(events.len());
+
+        for event in events {
+            x_vec.push(event.x as i64);
+            y_vec.push(event.y as i64);
+            t_vec.push(event.t);
+            p_vec.push(if event.polarity { 1i64 } else { 0i64 });
+        }
+
+        data_dict.insert("x".to_string(), x_vec.into_pyobject(py)?.into());
+        data_dict.insert("y".to_string(), y_vec.into_pyobject(py)?.into());
+        data_dict.insert("t".to_string(), t_vec.into_pyobject(py)?.into());
+        data_dict.insert("polarity".to_string(), p_vec.into_pyobject(py)?.into());
+
+        Ok(data_dict.into_pyobject(py)?.into())
     }
 }

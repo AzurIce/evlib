@@ -11,6 +11,7 @@ pub mod gpu_utils;
 pub mod hyper_e2vid;
 pub mod metrics;
 pub mod model_verification;
+#[cfg(feature = "onnx")]
 pub mod onnx_loader_simple;
 pub mod python;
 // SPADE and SSL Python bindings have been replaced by the unified API
@@ -38,6 +39,7 @@ pub use metrics::{ms_ssim, mse, psnr, ssim, ReconstructionMetrics};
 pub use model_verification::{
     create_e2vid_test_inputs, verify_model_with_inputs, ModelVerifier, VerificationResults,
 };
+#[cfg(feature = "onnx")]
 pub use onnx_loader_simple::{ModelConverter, OnnxE2VidModel, OnnxModelConfig};
 pub use pytorch_bridge::{load_pytorch_weights_into_varmap, ModelWeightMapper, PyTorchLoader};
 pub use pytorch_loader::{E2VidModelLoader, E2VidNet, ModelLoaderConfig};
