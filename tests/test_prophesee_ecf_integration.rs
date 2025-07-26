@@ -12,13 +12,28 @@ This test validates:
 
 use evlib::ev_formats::format_detector::{detect_event_format, EventFormat};
 use evlib::ev_formats::{load_events_with_config, LoadConfig};
+use std::env;
 use std::path::Path;
+
+/// Check if we're running in CI environment
+fn is_running_in_ci() -> bool {
+    env::var("CI").is_ok()
+        || env::var("GITHUB_ACTIONS").is_ok()
+        || env::var("TRAVIS").is_ok()
+        || env::var("CIRCLECI").is_ok()
+        || env::var("JENKINS_URL").is_ok()
+}
 
 const PROPHESEE_TEST_FILE: &str =
     "/Users/tallam/github/tallamjr/origin/evlib/data/prophersee/samples/hdf5/pedestrians.hdf5";
 
 #[test]
 fn test_prophesee_file_exists() {
+    if is_running_in_ci() {
+        eprintln!("Skipping test in CI environment - Prophesee test file not available in CI");
+        return;
+    }
+
     assert!(
         Path::new(PROPHESEE_TEST_FILE).exists(),
         "Prophesee test file not found: {}. This test requires the actual Prophesee HDF5 file.",
@@ -28,10 +43,11 @@ fn test_prophesee_file_exists() {
 
 #[test]
 fn test_prophesee_format_detection() {
-    if !Path::new(PROPHESEE_TEST_FILE).exists() {
+    if is_running_in_ci() || !Path::new(PROPHESEE_TEST_FILE).exists() {
         eprintln!(
-            "Skipping test - Prophesee file not found: {}",
-            PROPHESEE_TEST_FILE
+            "Skipping test - Prophesee file not available (CI: {}, exists: {})",
+            is_running_in_ci(),
+            Path::new(PROPHESEE_TEST_FILE).exists()
         );
         return;
     }
@@ -60,10 +76,11 @@ fn test_prophesee_format_detection() {
 
 #[test]
 fn test_prophesee_ecf_loading_with_fallback() {
-    if !Path::new(PROPHESEE_TEST_FILE).exists() {
+    if is_running_in_ci() || !Path::new(PROPHESEE_TEST_FILE).exists() {
         eprintln!(
-            "Skipping test - Prophesee file not found: {}",
-            PROPHESEE_TEST_FILE
+            "Skipping test - Prophesee file not available (CI: {}, exists: {})",
+            is_running_in_ci(),
+            Path::new(PROPHESEE_TEST_FILE).exists()
         );
         return;
     }
@@ -160,10 +177,11 @@ fn test_prophesee_ecf_loading_with_fallback() {
 
 #[test]
 fn test_prophesee_metadata_extraction() {
-    if !Path::new(PROPHESEE_TEST_FILE).exists() {
+    if is_running_in_ci() || !Path::new(PROPHESEE_TEST_FILE).exists() {
         eprintln!(
-            "Skipping test - Prophesee file not found: {}",
-            PROPHESEE_TEST_FILE
+            "Skipping test - Prophesee file not available (CI: {}, exists: {})",
+            is_running_in_ci(),
+            Path::new(PROPHESEE_TEST_FILE).exists()
         );
         return;
     }
@@ -213,10 +231,11 @@ fn test_prophesee_metadata_extraction() {
 
 #[test]
 fn test_ecf_codec_detection() {
-    if !Path::new(PROPHESEE_TEST_FILE).exists() {
+    if is_running_in_ci() || !Path::new(PROPHESEE_TEST_FILE).exists() {
         eprintln!(
-            "Skipping test - Prophesee file not found: {}",
-            PROPHESEE_TEST_FILE
+            "Skipping test - Prophesee file not available (CI: {}, exists: {})",
+            is_running_in_ci(),
+            Path::new(PROPHESEE_TEST_FILE).exists()
         );
         return;
     }
@@ -422,10 +441,11 @@ fn test_performance_with_large_synthetic_data() {
 
 #[test]
 fn test_error_message_quality() {
-    if !Path::new(PROPHESEE_TEST_FILE).exists() {
+    if is_running_in_ci() || !Path::new(PROPHESEE_TEST_FILE).exists() {
         eprintln!(
-            "Skipping test - Prophesee file not found: {}",
-            PROPHESEE_TEST_FILE
+            "Skipping test - Prophesee file not available (CI: {}, exists: {})",
+            is_running_in_ci(),
+            Path::new(PROPHESEE_TEST_FILE).exists()
         );
         return;
     }
@@ -467,10 +487,11 @@ fn test_error_message_quality() {
 
 #[test]
 fn test_empty_config_handling() {
-    if !Path::new(PROPHESEE_TEST_FILE).exists() {
+    if is_running_in_ci() || !Path::new(PROPHESEE_TEST_FILE).exists() {
         eprintln!(
-            "Skipping test - Prophesee file not found: {}",
-            PROPHESEE_TEST_FILE
+            "Skipping test - Prophesee file not available (CI: {}, exists: {})",
+            is_running_in_ci(),
+            Path::new(PROPHESEE_TEST_FILE).exists()
         );
         return;
     }
