@@ -235,14 +235,14 @@ pub struct E2VidRecurrent {
 
 impl E2VidRecurrent {
     pub fn new(vb: VarBuilder) -> Result<Self> {
-        // Head: 5 → 32 channels (5x5 conv)
+        // Head: 5 to 32 channels (5x5 conv)
         let head_config = candle_nn::Conv2dConfig {
             padding: 2,
             ..Default::default()
         };
         let head = conv2d(5, 32, 5, head_config, vb.pp("head").pp("conv2d"))?;
 
-        // Encoders: 32 → 64 → 128 → 256
+        // Encoders: 32 to 64 to 128 to 256
         let encoders = vec![
             EncoderBlock::new(vb.pp("encoders").pp("0"), 32, 64, true)?,
             EncoderBlock::new(vb.pp("encoders").pp("1"), 64, 128, true)?,
@@ -255,14 +255,14 @@ impl E2VidRecurrent {
             ResidualBlock::new(vb.pp("resblocks").pp("1"), 256)?,
         ];
 
-        // Decoders: 256 → 128 → 64 → 32
+        // Decoders: 256 to 128 to 64 to 32
         let decoders = vec![
             DecoderBlock::new(vb.pp("decoders").pp("0"), 256, 128)?,
             DecoderBlock::new(vb.pp("decoders").pp("1"), 128, 64)?,
             DecoderBlock::new(vb.pp("decoders").pp("2"), 64, 32)?,
         ];
 
-        // Prediction head: 32 → 1 (1x1 conv)
+        // Prediction head: 32 to 1 (1x1 conv)
         let pred_config = candle_nn::Conv2dConfig::default();
         let pred = conv2d(32, 1, 1, pred_config, vb.pp("pred").pp("conv2d"))?;
         let pred_norm = batch_norm(1, 1e-5, vb.pp("pred").pp("norm_layer"))?;

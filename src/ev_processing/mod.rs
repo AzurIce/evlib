@@ -69,7 +69,7 @@ pub trait ObjectiveFunction {
     }
 }
 
-/// Variance objective – measures the variance of the image of warped events.
+/// Variance objective - measures the variance of the image of warped events.
 pub struct VarianceObjective;
 
 impl ObjectiveFunction for VarianceObjective {

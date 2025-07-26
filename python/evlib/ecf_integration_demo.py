@@ -34,40 +34,40 @@ def create_synthetic_prophesee_data(num_events=1000):
 def test_rust_ecf_codec():
     """Test our Rust ECF codec with synthetic Prophesee-style data."""
 
-    print("🦀 Testing Rust ECF Codec with Synthetic Prophesee Data")
+    print("Testing Rust ECF Codec with Synthetic Prophesee Data")
     print("=" * 60)
 
     # Import our Rust ECF codec (via Python if needed)
     try:
         from .ecf_decoder import decode_ecf_compressed_chunk
 
-        print("✅ Python ECF decoder bridge available")
+        print("Python ECF decoder bridge available")
     except ImportError:
-        print("⚠️  Python ECF decoder bridge not available")
+        print("WARNING: Python ECF decoder bridge not available")
         print("   Using conceptual demonstration...")
 
     # Create synthetic test data
-    print("\n📊 Creating synthetic event data...")
+    print("\nCreating synthetic event data...")
     events = create_synthetic_prophesee_data(10000)
     print(f"   Generated {len(events)} synthetic events")
     print(f"   Time span: {events[0]['t']} - {events[-1]['t']} microseconds")
     print("   Spatial range: x=[0-1279], y=[0-719]")
 
     # Show what our Rust ECF codec can do
-    print("\n🔧 Rust ECF Codec Capabilities:")
-    print("   ✅ Complete encode/decode implementation")
-    print("   ✅ Delta timestamp compression")
-    print("   ✅ Bit-packed coordinate encoding")
-    print("   ✅ Multiple compression modes")
-    print("   ✅ Tested with 10K+ events")
-    print("   ✅ 1.4x compression ratio achieved")
-    print("   ✅ Microsecond decode performance")
+    print("\nRust ECF Codec Capabilities:")
+    print("   Complete encode/decode implementation")
+    print("   Delta timestamp compression")
+    print("   Bit-packed coordinate encoding")
+    print("   Multiple compression modes")
+    print("   Tested with 10K+ events")
+    print("   1.4x compression ratio achieved")
+    print("   Microsecond decode performance")
 
     # Demonstrate the data structure we handle
-    print("\n📋 Example events our codec processes:")
+    print("\nExample events our codec processes:")
     for i in range(3):
         evt = events[i]
-        print(f"   Event {i+1}: x={evt['x']}, y={evt['y']}, p={evt['p']}, t={evt['t']}μs")
+        print(f"   Event {i+1}: x={evt['x']}, y={evt['y']}, p={evt['p']}, t={evt['t']}us")
 
     return True
 
@@ -75,7 +75,7 @@ def test_rust_ecf_codec():
 def analyze_prophesee_file_structure(file_path):
     """Analyze the structure of a real Prophesee HDF5 file."""
 
-    print("\n📁 Analyzing Prophesee HDF5 File Structure")
+    print("\nAnalyzing Prophesee HDF5 File Structure")
     print("=" * 60)
 
     try:
@@ -83,17 +83,17 @@ def analyze_prophesee_file_structure(file_path):
         import os
 
         if not os.path.exists(file_path):
-            print(f"❌ File not found: {file_path}")
+            print(f"ERROR: File not found: {file_path}")
             return False
 
-        print(f"📂 File: {os.path.basename(file_path)}")
-        print(f"📊 Size: {os.path.getsize(file_path) / 1024 / 1024:.1f} MB")
+        print(f" File: {os.path.basename(file_path)}")
+        print(f" Size: {os.path.getsize(file_path) / 1024 / 1024:.1f} MB")
 
         with h5py.File(file_path, "r") as f:
             # Analyze structure
             cd_events = f["CD"]["events"]
 
-            print("\n🔍 Dataset Analysis:")
+            print("\n Dataset Analysis:")
             print(f"   Events: {len(cd_events):,}")
             print(f"   Dtype: {cd_events.dtype}")
             print(f"   Chunks: {cd_events.chunks}")
@@ -109,51 +109,51 @@ def analyze_prophesee_file_structure(file_path):
                 for i, (filter_id, flags, values, name) in enumerate(filters):
                     print(f"     Filter {i}: ID={filter_id} (0x{filter_id:x}), name='{name}'")
                     if filter_id == 36559:
-                        print("       ✅ ECF codec detected!")
+                        print("        ECF codec detected!")
             except Exception as e:
                 print(f"   Filter info unavailable: {e}")
 
         return True
 
     except Exception as e:
-        print(f"❌ Analysis failed: {e}")
+        print(f"ERROR: Analysis failed: {e}")
         return False
 
 
 def demonstrate_ecf_integration_path():
     """Show the path to full ECF integration."""
 
-    print("\n🛤️  ECF Integration Path")
+    print("\n  ECF Integration Path")
     print("=" * 60)
 
-    print("📋 Current Status:")
-    print("   ✅ Rust ECF codec: COMPLETE (encode/decode working)")
-    print("   ✅ Python ECF fallback: COMPLETE (basic structure)")
-    print("   ✅ Error handling: COMPLETE (comprehensive guidance)")
-    print("   ✅ Fallback system: COMPLETE (multi-layer approach)")
-    print("   🚧 HDF5 integration: IN PROGRESS (chunk access needed)")
+    print(" Current Status:")
+    print("    Rust ECF codec: COMPLETE (encode/decode working)")
+    print("    Python ECF fallback: COMPLETE (basic structure)")
+    print("    Error handling: COMPLETE (comprehensive guidance)")
+    print("    Fallback system: COMPLETE (multi-layer approach)")
+    print("    HDF5 integration: IN PROGRESS (chunk access needed)")
 
-    print("\n🔧 Integration Options:")
+    print("\n Integration Options:")
 
     print("\n   Option A: Install Official ECF Codec (RECOMMENDED)")
-    print("     • Install via Ubuntu packages or build from source")
-    print("     • Set HDF5_PLUGIN_PATH environment variable")
-    print("     • Use standard h5py/HDF5 APIs transparently")
-    print("     • ✅ Zero code changes needed")
+    print("     - Install via Ubuntu packages or build from source")
+    print("     - Set HDF5_PLUGIN_PATH environment variable")
+    print("     - Use standard h5py/HDF5 APIs transparently")
+    print("     -  Zero code changes needed")
 
     print("\n   Option B: Complete Rust Integration (ADVANCED)")
-    print("     • Implement HDF5 chunk-level data access in Rust")
-    print("     • Extract compressed chunks directly from HDF5 file")
-    print("     • Decode using our Rust ECF codec")
-    print("     • ✅ Self-contained solution")
+    print("     - Implement HDF5 chunk-level data access in Rust")
+    print("     - Extract compressed chunks directly from HDF5 file")
+    print("     - Decode using our Rust ECF codec")
+    print("     -  Self-contained solution")
 
     print("\n   Option C: Hybrid Approach (CURRENT)")
-    print("     • Use h5py for HDF5 structure navigation")
-    print("     • Extract raw compressed chunks via Python")
-    print("     • Decode chunks using Rust ECF codec via bridge")
-    print("     • ⚠️  Requires low-level HDF5 chunk access")
+    print("     - Use h5py for HDF5 structure navigation")
+    print("     - Extract raw compressed chunks via Python")
+    print("     - Decode chunks using Rust ECF codec via bridge")
+    print("     - WARNING:  Requires low-level HDF5 chunk access")
 
-    print("\n💡 For immediate use:")
+    print("\n For immediate use:")
     print("   See ECF_CODEC_INSTALL.md for codec installation")
     print("   Our Rust ECF decoder is ready and waiting!")
 
@@ -161,7 +161,7 @@ def demonstrate_ecf_integration_path():
 def main():
     """Run ECF integration demonstration."""
 
-    print("🎯 ECF Integration Status Demo")
+    print(" ECF Integration Status Demo")
     print("This shows our complete ECF implementation and integration options\n")
 
     # Test our Rust ECF codec
@@ -177,12 +177,12 @@ def main():
     demonstrate_ecf_integration_path()
 
     print("\n" + "=" * 60)
-    print("🎉 Summary:")
-    print("✅ Our Rust ECF codec is COMPLETE and WORKING")
-    print("✅ All fallback mechanisms are in place")
-    print("✅ Error messages provide clear guidance")
-    print("🚧 Only missing: HDF5 chunk access integration")
-    print("\n📖 Next steps: Install ECF codec OR implement chunk access")
+    print(" Summary:")
+    print(" Our Rust ECF codec is COMPLETE and WORKING")
+    print(" All fallback mechanisms are in place")
+    print(" Error messages provide clear guidance")
+    print(" Only missing: HDF5 chunk access integration")
+    print("\n Next steps: Install ECF codec OR implement chunk access")
 
 
 if __name__ == "__main__":

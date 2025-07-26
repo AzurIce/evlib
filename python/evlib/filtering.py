@@ -353,7 +353,7 @@ def _apply_refractory_filter(events_lazy: pl.LazyFrame, refractory_period_us: in
     Returns:
         LazyFrame with refractory filtering applied
     """
-    print(f"Applying refractory period filter ({refractory_period_us} μs)...")
+    print(f"Applying refractory period filter ({refractory_period_us} microseconds)...")
     start_time = time.time()
 
     # Collect and sort events by pixel and timestamp
@@ -526,7 +526,7 @@ if __name__ == "__main__":
     print()
     print("Available functions:")
     for func_name in __all__:
-        print(f"  • {func_name}")
+        print(f"  - {func_name}")
     print()
     print("Example usage:")
     print("  import evlib.filtering as evf")

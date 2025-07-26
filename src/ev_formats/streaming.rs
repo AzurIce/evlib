@@ -114,6 +114,7 @@ impl PolarsEventStreamer {
     /// # Returns
     /// Result containing a Polars DataFrame with all events
     #[cfg(feature = "polars")]
+    #[allow(unused_assignments)]
     pub fn stream_to_polars<I>(&self, events: I) -> PolarsResult<DataFrame>
     where
         I: Iterator<Item = Event>,
@@ -121,7 +122,7 @@ impl PolarsEventStreamer {
         let mut dataframes = Vec::new();
         let mut chunk_buffer = Vec::with_capacity(self.chunk_size);
         let mut total_processed = 0;
-        let mut chunk_count = 0;
+        let mut _chunk_count = 0;
 
         for event in events {
             chunk_buffer.push(event);
@@ -134,11 +135,11 @@ impl PolarsEventStreamer {
                 }
 
                 total_processed += chunk_buffer.len();
-                chunk_count += 1;
+                _chunk_count += 1;
 
                 // Progress reporting
                 if total_processed % self.progress_interval == 0 {
-                    eprintln!("Processed {total_processed} events in {chunk_count} chunks");
+                    // Progress reporting was removed
                 }
 
                 chunk_buffer.clear();
@@ -152,7 +153,7 @@ impl PolarsEventStreamer {
                 dataframes.push(chunk_df);
             }
             total_processed += chunk_buffer.len();
-            chunk_count += 1;
+            _chunk_count += 1;
         }
 
         // Handle empty case
@@ -179,8 +180,6 @@ impl PolarsEventStreamer {
                 .collect();
             concat(&lazy_frames, UnionArgs::default())?.collect()?
         };
-
-        eprintln!("Streaming complete: {total_processed} events processed in {chunk_count} chunks");
 
         // Final schema enforcement to ensure correct types
         let final_df_with_schema = final_df
@@ -254,7 +253,7 @@ impl PolarsEventStreamer {
         // VECTORIZED polarity conversion (much faster than per-event)
         let df = match self.format {
             EventFormat::EVT2 | EventFormat::EVT21 | EventFormat::EVT3 => {
-                // EVT2 family: Convert 0/1 → -1/1 using vectorized operations
+                // EVT2 family: Convert 0/1 to -1/1 using vectorized operations
                 df.lazy()
                     .with_column(
                         when(col("polarity").eq(lit(0)))
@@ -265,7 +264,7 @@ impl PolarsEventStreamer {
                     .collect()?
             }
             EventFormat::HDF5 => {
-                // HDF5 format: Convert 0/1 → -1/1 for consistency
+                // HDF5 format: Convert 0/1 to -1/1 for consistency
                 df.lazy()
                     .with_column(
                         when(col("polarity").eq(lit(0)))

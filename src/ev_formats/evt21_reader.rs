@@ -762,7 +762,7 @@ impl Evt21Reader {
 
                 // Create event
                 let event = Event {
-                    t: full_timestamp as f64 / 1_000_000.0, // Convert μs to seconds
+                    t: full_timestamp as f64 / 1_000_000.0, // Convert microseconds to seconds
                     x,
                     y,
                     polarity: vectorized_event.polarity,

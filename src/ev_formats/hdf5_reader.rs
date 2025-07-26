@@ -41,18 +41,11 @@ pub fn read_prophesee_hdf5_native(path: &str) -> H5Result<Events> {
         return Ok(Vec::new());
     }
 
-    eprintln!(
-        "Reading {} events from Prophesee HDF5 using native ECF decoder",
-        total_events
-    );
-
     // Get dataset information
     let chunk_size = match events_dataset.chunk() {
         Some(chunk_shape) => chunk_shape[0],
         None => 16384,
     };
-
-    eprintln!("Dataset uses chunks of {} events", chunk_size);
 
     // Create Prophesee ECF decoder
     let decoder = PropheseeECFDecoder::new().with_debug(true);
@@ -72,28 +65,18 @@ pub fn read_prophesee_hdf5_native(path: &str) -> H5Result<Events> {
     // For now, we'll implement a hybrid approach using the dataset's raw data access
 
     // Check if we can read the dataset storage details
-    let storage_size = events_dataset.storage_size();
-    eprintln!("Dataset storage size: {} bytes", storage_size);
+    let _storage_size = events_dataset.storage_size();
 
     // Attempt to decode chunks
     let num_chunks = total_events.div_ceil(chunk_size);
-    eprintln!("Processing {} chunks", num_chunks);
 
     // Process all chunks
-    let mut chunks_processed = 0;
-    let mut total_decoded_events = 0;
+    let mut _chunks_processed = 0;
+    let mut _total_decoded_events = 0;
 
     for chunk_idx in 0..num_chunks {
-        eprintln!("Processing chunk {}/{}", chunk_idx + 1, num_chunks);
-
         match read_compressed_chunk(&events_dataset, chunk_idx) {
             Ok(compressed_data) => {
-                eprintln!(
-                    "Read compressed chunk {} ({} bytes)",
-                    chunk_idx,
-                    compressed_data.len()
-                );
-
                 // The compressed_data contains HDF5 chunk headers + ECF payload
                 // We need to extract just the ECF payload
                 // For now, try different offsets to find the ECF data
@@ -103,12 +86,6 @@ pub fn read_prophesee_hdf5_native(path: &str) -> H5Result<Events> {
                 // Decode with our ECF codec
                 match decoder.decode(&ecf_payload) {
                     Ok(decoded_events) => {
-                        eprintln!(
-                            "Decoded {} events from chunk {}",
-                            decoded_events.len(),
-                            chunk_idx
-                        );
-
                         let event_count = decoded_events.len();
 
                         // Convert PropheseeEvent to Event
@@ -121,18 +98,15 @@ pub fn read_prophesee_hdf5_native(path: &str) -> H5Result<Events> {
                             });
                         }
 
-                        total_decoded_events += event_count;
-                        chunks_processed += 1;
+                        _total_decoded_events += event_count;
+                        _chunks_processed += 1;
                     }
-                    Err(e) => {
-                        eprintln!("ECF decode error for chunk {}: {}", chunk_idx, e);
+                    Err(_e) => {
                         // Continue with other chunks instead of failing completely
                     }
                 }
             }
             Err(e) => {
-                eprintln!("Failed to read chunk {}: {}", chunk_idx, e);
-
                 // For the first chunk failure, return a helpful error
                 if chunk_idx == 0 {
                     return Err(hdf5_metno::Error::Internal(format!(
@@ -148,18 +122,9 @@ pub fn read_prophesee_hdf5_native(path: &str) -> H5Result<Events> {
 
         // Progress reporting for large files
         if num_chunks > 10 && chunk_idx % (num_chunks / 10) == 0 {
-            let progress = (chunk_idx as f64 / num_chunks as f64) * 100.0;
-            eprintln!(
-                "Progress: {:.1}% ({} chunks processed, {} events decoded)",
-                progress, chunks_processed, total_decoded_events
-            );
+            let _progress = (chunk_idx as f64 / num_chunks as f64) * 100.0;
         }
     }
-
-    eprintln!(
-        "Completed processing: {}/{} chunks successful, {} total events decoded",
-        chunks_processed, num_chunks, total_decoded_events
-    );
 
     if all_events.is_empty() {
         Err(hdf5_metno::Error::Internal(
@@ -217,16 +182,11 @@ fn get_dataset_filters(dataset: &Dataset) -> H5Result<Vec<u32>> {
             filter_ids.push(filter_id as u32);
 
             // Convert name to string for debugging
-            let filter_name = unsafe {
+            let _filter_name = unsafe {
                 std::ffi::CStr::from_ptr(name.as_ptr())
                     .to_string_lossy()
                     .to_string()
             };
-
-            eprintln!(
-                "Found filter: ID={} (0x{:x}), name='{}'",
-                filter_id, filter_id, filter_name
-            );
         }
     }
 
@@ -307,15 +267,10 @@ fn read_compressed_chunk(dataset: &Dataset, chunk_idx: usize) -> io::Result<Vec<
         ));
     }
 
-    eprintln!(
-        "Chunk {}: offset={:?}, filter_mask=0x{:x}, addr=0x{:x}, size={} bytes",
-        chunk_idx, chunk_offset, filter_mask, chunk_addr, chunk_size
-    );
-
     // Check if ECF filter is applied (filter ID 36559 = 0x8ECF)
     // The filter_mask indicates which filters were applied during compression
     if filter_mask == 0 {
-        eprintln!("Warning: No filters applied to chunk {}", chunk_idx);
+        // No filters applied to this chunk
     }
 
     // Allocate buffer for compressed data
@@ -340,12 +295,6 @@ fn read_compressed_chunk(dataset: &Dataset, chunk_idx: usize) -> io::Result<Vec<
             format!("Failed to read compressed chunk {} data", chunk_idx),
         ));
     }
-
-    eprintln!(
-        "Successfully read {} bytes of compressed data from chunk {}",
-        compressed_data.len(),
-        chunk_idx
-    );
 
     Ok(compressed_data)
 }
@@ -400,40 +349,18 @@ fn extract_ecf_payload_from_chunk(chunk_data: &[u8]) -> io::Result<Vec<u8>> {
 
         // Check if this looks like a valid ECF header
         if is_valid_ecf_header(payload) {
-            eprintln!(
-                "Found ECF payload at offset {} (payload size: {} bytes)",
-                offset,
-                payload.len()
-            );
             return Ok(payload.to_vec());
         }
     }
-
-    // If we can't find a valid header, log more details for debugging
-    eprintln!(
-        "Debug: First 64 bytes of chunk: {:02x?}",
-        &chunk_data[..chunk_data.len().min(64)]
-    );
 
     // Try scanning the entire chunk for a valid ECF pattern
     for offset in (0..chunk_data.len().saturating_sub(8)).step_by(4) {
         let payload = &chunk_data[offset..];
         if is_valid_ecf_header(payload) {
-            eprintln!(
-                "Found ECF payload at scanned offset {} (payload size: {} bytes)",
-                offset,
-                payload.len()
-            );
             return Ok(payload.to_vec());
         }
     }
 
-    // If no valid ECF header found, try the whole chunk
-    // (maybe it's already the ECF payload)
-    eprintln!(
-        "No ECF header found, trying whole chunk ({} bytes)",
-        chunk_data.len()
-    );
     Ok(chunk_data.to_vec())
 }
 
@@ -455,11 +382,7 @@ fn is_valid_ecf_header(data: &[u8]) -> bool {
     {
         // This looks like a Prophesee ECF chunk format
         // The event count might be at bytes 4-7
-        let potential_events = u32::from_le_bytes([data[4], data[5], data[6], data[7]]);
-        eprintln!(
-            "Prophesee ECF chunk detected with potential {} events",
-            potential_events
-        );
+        let _potential_events = u32::from_le_bytes([data[4], data[5], data[6], data[7]]);
         return true;
     }
 
@@ -471,10 +394,6 @@ fn is_valid_ecf_header(data: &[u8]) -> bool {
     // - num_events should be reasonable (1 to 16384 for chunks)
     // - flags should have known ECF flag bits (only low 3 bits used)
     if num_events > 0 && num_events <= 16384 && (flags & 0xFFFFFFF8) == 0 {
-        eprintln!(
-            "Standard ECF header found: {} events, flags=0x{:x}",
-            num_events, flags
-        );
         return true;
     }
 

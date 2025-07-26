@@ -304,37 +304,26 @@ pub fn load_events_from_hdf5(path: &str, dataset_name: Option<&str>) -> hdf5_met
             }
 
             // This is a Prophesee HDF5 format - try multiple approaches
-            eprintln!("Detected Prophesee HDF5 format with CD/events compound dataset");
 
             // Use our native Rust ECF decoder first - it now properly handles Prophesee format
-            eprintln!("Using native Rust ECF decoder for Prophesee format...");
             match hdf5_reader::read_prophesee_hdf5_native(path) {
                 Ok(events) => {
-                    eprintln!(
-                        "✅ Native Rust ECF decoder succeeded! Loaded {} events",
-                        events.len()
-                    );
                     return Ok(events);
                 }
-                Err(e) => {
-                    eprintln!("❌ Native Rust ECF decoder failed: {}", e);
-                    eprintln!("Falling back to Python approach...");
+                Err(_e) => {
+                    // Native ECF decoder failed, will try Python fallback
                 }
             }
 
             #[cfg(feature = "python")]
             {
-                eprintln!("Trying Python fallback with h5py for compound dataset support");
                 match call_python_prophesee_fallback(path) {
                     Ok(events) => return Ok(events),
                     Err(e) => {
-                        eprintln!("Python fallback failed: {}", e);
-                        eprintln!("Trying experimental Rust ECF decoder...");
-
                         // Try Rust ECF decoder as fallback
                         match try_rust_ecf_decoder(&cd_group, &events_dataset, total_events) {
                             Ok(events) => {
-                                eprintln!("✓ Rust ECF decoder succeeded!");
+                                eprintln!("Rust ECF decoder succeeded!");
                                 return Ok(events);
                             }
                             Err(ecf_error) => {
@@ -355,7 +344,7 @@ pub fn load_events_from_hdf5(path: &str, dataset_name: Option<&str>) -> hdf5_met
                 // Try the old experimental approach as final fallback
                 match try_rust_ecf_decoder(&cd_group, &events_dataset, total_events) {
                     Ok(events) => {
-                        eprintln!("✓ Rust ECF decoder succeeded!");
+                        eprintln!("Rust ECF decoder succeeded!");
                         return Ok(events);
                     }
                     Err(ecf_error) => {
@@ -592,15 +581,12 @@ fn try_rust_ecf_decoder(
     match hdf5_reader::read_prophesee_hdf5_native(&filename) {
         Ok(events) => {
             eprintln!(
-                "✅ Native Rust ECF decoder successfully loaded {} events",
+                "Native Rust ECF decoder successfully loaded {} events",
                 events.len()
             );
             Ok(events)
         }
-        Err(e) => {
-            eprintln!("❌ Native Rust ECF decoder failed: {}", e);
-            Err(format!("Native ECF decoding failed: {}", e).into())
-        }
+        Err(e) => Err(format!("Native ECF decoding failed: {}", e).into()),
     }
 }
 
@@ -1092,7 +1078,7 @@ pub mod python {
         // VECTORIZED polarity conversion (much faster than per-event)
         let df = match format {
             EventFormat::EVT2 | EventFormat::EVT21 | EventFormat::EVT3 => {
-                // EVT2 family: Convert 0/1 → -1/1 using vectorized operations
+                // EVT2 family: Convert 0/1 to -1/1 using vectorized operations
                 df.lazy()
                     .with_column(
                         when(col("polarity").eq(lit(0)))
@@ -1103,7 +1089,7 @@ pub mod python {
                     .collect()?
             }
             EventFormat::HDF5 => {
-                // HDF5: Convert 0/1 → -1/1 for proper polarity encoding
+                // HDF5: Convert 0/1 to -1/1 for proper polarity encoding
                 df.lazy()
                     .with_column(
                         when(col("polarity").eq(lit(0)))
@@ -1313,10 +1299,6 @@ pub mod python {
                 let chunk_size =
                     PolarsEventStreamer::calculate_optimal_chunk_size(event_count, 512);
                 let streamer = PolarsEventStreamer::new(chunk_size, format_result.format);
-
-                eprintln!(
-                    "Using streaming mode for {event_count} events (chunk size: {chunk_size})"
-                );
 
                 streamer.stream_to_polars(events.into_iter()).map_err(|e| {
                     PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(

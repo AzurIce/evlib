@@ -55,7 +55,6 @@ except ImportError:
         if os.path.exists(path):
             os.environ["HDF5_PLUGIN_PATH"] = path
             _plugin_path = path
-            print(f"Found HDF5 plugins at: {path}")
             break
 
 
@@ -70,7 +69,6 @@ def _decode_with_python_ecf(h5_file, cd_events_dataset):
         # Import our ECF decoder
         from .ecf_decoder import decode_ecf_compressed_chunk
     except ImportError:
-        print("Pure Python ECF decoder not available")
         return None
 
     # Try to read raw chunk data and decode it
@@ -79,8 +77,6 @@ def _decode_with_python_ecf(h5_file, cd_events_dataset):
         num_events = len(cd_events_dataset)
         if num_events == 0:
             return np.array([], dtype=[("x", "<u2"), ("y", "<u2"), ("p", "<i2"), ("t", "<i8")])
-
-        print(f"Attempting to decode {num_events} compressed events using experimental approach...")
 
         # EXPERIMENTAL: Try to call our Rust ECF decoder via Python
         # This is a bridge approach until we implement full HDF5 chunk access
@@ -92,25 +88,17 @@ def _decode_with_python_ecf(h5_file, cd_events_dataset):
                 cd_events = f["CD"]["events"]
 
                 # Get chunk layout information
-                chunks = cd_events.chunks
-                print(f"Dataset uses chunks of size: {chunks}")
+                _chunks = cd_events.chunks
 
                 # This is where we would read raw compressed chunks
                 # For now, return a helpful message about the approach
-                print("📋 ECF Decoder Integration Status:")
-                print("   ✅ Rust ECF codec implemented and tested")
-                print("   ✅ Python fallback structure in place")
-                print("   🚧 HDF5 chunk-level access integration needed")
-                print("   💡 Would read compressed chunks and decode with Rust ECF codec")
 
                 return None
 
-        except Exception as e:
-            print(f"Experimental ECF decode approach failed: {e}")
+        except Exception:
             return None
 
-    except Exception as e:
-        print(f"Python ECF decode failed: {e}")
+    except Exception:
         return None
 
 
@@ -257,8 +245,6 @@ def load_prophesee_hdf5_fallback(file_path: str) -> Optional[Dict[str, np.ndarra
                     "polarity": np.array([], dtype=np.int8),
                 }
 
-            print(f"Loading {total_events} events from Prophesee HDF5 format using h5py fallback")
-
             # Read the compound dataset in chunks to handle large files and system issues
             # Expected dtype: {'x': '<u2', 'y': '<u2', 'p': '<i2', 't': '<i8'}
 
@@ -267,17 +253,14 @@ def load_prophesee_hdf5_fallback(file_path: str) -> Optional[Dict[str, np.ndarra
 
             try:
                 # Try to read the data with current setup
-                print("Testing compression plugin availability...")
 
                 # Try reading a small sample first
                 _ = cd_events[:1]  # Just one event
-                print("✓ Compression plugins working, reading full dataset...")
 
                 if total_events <= chunk_size:
                     events_data = cd_events[:]
                 else:
                     # Read in chunks for large files
-                    print(f"Reading large file in chunks of {chunk_size} events...")
                     all_data = []
                     for start_idx in range(0, total_events, chunk_size):
                         end_idx = min(start_idx + chunk_size, total_events)
@@ -285,7 +268,7 @@ def load_prophesee_hdf5_fallback(file_path: str) -> Optional[Dict[str, np.ndarra
                         all_data.append(chunk_data)
 
                         if (end_idx - start_idx) > 50000:  # Progress for large chunks
-                            print(f"  Loaded {end_idx}/{total_events} events ({end_idx*100//total_events}%)")
+                            pass  # Progress reporting was removed
 
                     # Concatenate all chunks
                     events_data = np.concatenate(all_data)
@@ -293,25 +276,20 @@ def load_prophesee_hdf5_fallback(file_path: str) -> Optional[Dict[str, np.ndarra
             except Exception as e:
                 # If there are system-level HDF5 issues, try fallback approaches
                 if "plugin" in str(e).lower() or "synchronously" in str(e).lower():
-                    print("ECF codec plugin error detected, trying fallback approaches...")
 
                     # First, try subprocess approach with clean environment
                     try:
                         events_data = _load_via_subprocess(file_path)
-                        print("✓ Subprocess fallback succeeded!")
-                    except Exception as subprocess_error:
-                        print(f"Subprocess fallback failed: {subprocess_error}")
-
+                    except Exception:
                         # Last resort: try pure Python ECF decoder
-                        print("Trying experimental pure Python ECF decoder...")
                         try:
                             events_data = _decode_with_python_ecf(f, cd_events)
                             if events_data is not None:
-                                print("✓ Pure Python ECF decoder succeeded!")
+                                pass  # Success case was handled by removed debug print
                             else:
                                 raise ValueError("Pure Python decoder returned no data")
-                        except Exception as ecf_error:
-                            print(f"Pure Python ECF decoder failed: {ecf_error}")
+                        except Exception:
+                            pass  # Error case was handled by removed debug print
                         raise IOError(
                             f"""Prophesee ECF codec error: {e}
 

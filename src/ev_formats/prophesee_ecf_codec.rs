@@ -428,7 +428,7 @@ impl PropheseeECFDecoder {
     }
 
     /// Decode fully packed coordinates and polarity (Prophesee format)
-    /// Processes 4 events at a time in 3 × 32-bit words (12 bytes)
+    /// Processes 4 events at a time in 3 x 32-bit words (12 bytes)
     fn decode_ys_xs_and_ps_packed(
         &self,
         cursor: &mut Cursor<&[u8]>,
@@ -443,7 +443,7 @@ impl PropheseeECFDecoder {
         let mut events_decoded = 0;
 
         while events_decoded < num_events {
-            // Check if we have enough data for 3 × 32-bit words (12 bytes)
+            // Check if we have enough data for 3 x 32-bit words (12 bytes)
             let remaining_bytes = cursor.get_ref().len() - cursor.position() as usize;
             if remaining_bytes < 12 {
                 if self.debug {
@@ -455,7 +455,7 @@ impl PropheseeECFDecoder {
                 break;
             }
 
-            // Read 3 × 32-bit words
+            // Read 3 x 32-bit words
             let word0 = cursor.read_u32::<LittleEndian>()?;
             let word1 = cursor.read_u32::<LittleEndian>()?;
             let word2 = cursor.read_u32::<LittleEndian>()?;

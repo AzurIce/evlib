@@ -685,7 +685,7 @@ impl Evt2Reader {
 
                                 // Convert to Event struct
                                 let event = Event {
-                                    t: timestamp as f64 / 1_000_000.0, // Convert μs to seconds
+                                    t: timestamp as f64 / 1_000_000.0, // Convert microseconds to seconds
                                     x: cd_event.x,
                                     y: cd_event.y,
                                     polarity: cd_event.polarity,
