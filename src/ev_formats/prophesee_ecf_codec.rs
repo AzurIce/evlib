@@ -97,9 +97,15 @@ impl PropheseeECFDecoder {
         }
 
         // Decode based on header flags
+        eprintln!(
+            "ECF header: use_delta_timestamps = {}, num_events = {}",
+            header.use_delta_timestamps, header.num_events
+        );
+
         if header.use_delta_timestamps {
             self.decode_with_delta_timestamps(&mut cursor, &header)
         } else {
+            eprintln!("Using raw events decoding (no delta timestamps)");
             self.decode_raw_events(&mut cursor, &header)
         }
     }
@@ -109,29 +115,72 @@ impl PropheseeECFDecoder {
         if cursor.get_ref().len() < 4 {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                "Chunk too small for header",
+                "Chunk too small for ECF header",
             ));
         }
 
-        // Read chunk header - it's a single 32-bit integer with bit-packed fields
-        let header = cursor.read_u32::<LittleEndian>()?;
+        // Try bit-packed header format first (standard ECF)
+        let header_word = cursor.read_u32::<LittleEndian>()?;
 
-        // Extract fields from the bit-packed header
-        let num_events = (header >> 3) as usize; // Bits 3-31: Number of events
-        let use_delta_timestamps = (header >> 2) & 1 != 0; // Bit 2: delta_timestamps flag
-        let ys_xs_and_ps_packed = (header >> 1) & 1 != 0; // Bit 1: ys_xs_and_ps_packed flag
-        let xs_and_ps_packed = header & 1 != 0; // Bit 0: xs_and_ps_packed flag
+        // Extract fields from bit-packed header
+        let num_events_bitpacked = (header_word >> 3) as usize;
+        let use_delta_timestamps = (header_word >> 2) & 1 != 0;
+        let ys_xs_and_ps_packed = (header_word >> 1) & 1 != 0;
+        let xs_and_ps_packed = header_word & 1 != 0;
 
-        if self.debug {
-            // Header decoded successfully
+        // Check if bit-packed interpretation gives reasonable values
+        if num_events_bitpacked > 0 && num_events_bitpacked <= 16384 {
+            eprintln!(
+                "Using bit-packed ECF header: num_events={}, delta_ts={}, ys_xs_ps_packed={}, xs_ps_packed={}",
+                num_events_bitpacked, use_delta_timestamps, ys_xs_and_ps_packed, xs_and_ps_packed
+            );
+
+            return Ok(ChunkHeader {
+                num_events: num_events_bitpacked,
+                use_delta_timestamps,
+                ys_xs_and_ps_packed,
+                xs_and_ps_packed,
+            });
         }
 
-        Ok(ChunkHeader {
-            num_events,
-            use_delta_timestamps,
-            ys_xs_and_ps_packed,
-            xs_and_ps_packed,
-        })
+        // If bit-packed doesn't work, try Prophesee format
+        // Reset cursor and check for Prophesee format signature
+        cursor.set_position(0);
+
+        if cursor.get_ref().len() < 12 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "Chunk too small for Prophesee ECF header",
+            ));
+        }
+
+        let format_id = cursor.read_u32::<LittleEndian>()?;
+        let num_events_prophesee = cursor.read_u32::<LittleEndian>()? as usize;
+        let flags = cursor.read_u32::<LittleEndian>()?;
+
+        // Check for Prophesee format signature
+        if format_id == 0x00010002 && flags == 0x00000000 && num_events_prophesee <= 100000 {
+            eprintln!(
+                "Using Prophesee ECF header: format_id=0x{:08X}, num_events={}, flags=0x{:08X}",
+                format_id, num_events_prophesee, flags
+            );
+
+            return Ok(ChunkHeader {
+                num_events: num_events_prophesee,
+                use_delta_timestamps: true, // Prophesee typically uses delta encoding
+                ys_xs_and_ps_packed: true,  // Prophesee uses packed coordinates
+                xs_and_ps_packed: false,
+            });
+        }
+
+        // Neither format worked
+        Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!(
+                "Unrecognized ECF header format. Header word: 0x{:08X}, potential Prophesee ID: 0x{:08X}",
+                header_word, format_id
+            ),
+        ))
     }
 
     /// Decode events with delta timestamp encoding (main compression mode)
@@ -225,6 +274,11 @@ impl PropheseeECFDecoder {
         // Read delta bit width first
         let delta_bits = cursor.read_u8()?;
 
+        eprintln!(
+            "ECF timestamp encoding: delta_bits = {}, base_timestamp = {}",
+            delta_bits, base_timestamp
+        );
+
         if delta_bits == 0 {
             // All timestamps are identical to base timestamp
             for _ in 0..num_events {
@@ -252,12 +306,55 @@ impl PropheseeECFDecoder {
             return Ok(timestamps);
         }
 
-        // TODO: Handle other delta bit widths (8, 16, 32)
-        // For now, fall back to the old logic for non-zero delta_bits
+        // Handle other delta bit widths properly
+        match delta_bits {
+            8 => {
+                // 8-bit deltas
+                let mut current_timestamp = base_timestamp;
+                for _ in 0..num_events {
+                    let delta = cursor.read_u8()? as i64;
+                    current_timestamp += delta;
+                    timestamps.push(current_timestamp);
+                }
+                return Ok(timestamps);
+            }
+            16 => {
+                // 16-bit deltas
+                let mut current_timestamp = base_timestamp;
+                for _ in 0..num_events {
+                    let delta = cursor.read_u16::<LittleEndian>()? as i64;
+                    current_timestamp += delta;
+                    timestamps.push(current_timestamp);
+                }
+                return Ok(timestamps);
+            }
+            32 => {
+                // 32-bit deltas
+                let mut current_timestamp = base_timestamp;
+                for _ in 0..num_events {
+                    let delta = cursor.read_u32::<LittleEndian>()? as i64;
+                    current_timestamp += delta;
+                    timestamps.push(current_timestamp);
+                }
+                return Ok(timestamps);
+            }
+            64 => {
+                // 64-bit deltas (full timestamps)
+                for _ in 0..num_events {
+                    let timestamp = cursor.read_i64::<LittleEndian>()?;
+                    timestamps.push(timestamp);
+                }
+                return Ok(timestamps);
+            }
+            _ => {
+                // Unknown delta_bits, try the old fallback logic
+                eprintln!("WARNING: Unknown delta_bits value: {}", delta_bits);
+            }
+        }
+
+        // Old fallback logic for unknown delta_bits
         let mut current_timestamp = base_timestamp;
         let mut events_decoded = 0;
-
-        // Decoding timestamp deltas
 
         while events_decoded < num_events {
             // Check if we have at least one byte for timestamp data
@@ -574,7 +671,7 @@ impl PropheseeECFDecoder {
         let mut events = Vec::with_capacity(header.num_events);
 
         // Read events in raw format: x, y, p, t for each event
-        for _ in 0..header.num_events {
+        for i in 0..header.num_events {
             if cursor.position() + 14 > cursor.get_ref().len() as u64 {
                 break;
             }
@@ -582,6 +679,41 @@ impl PropheseeECFDecoder {
             let y = cursor.read_u16::<LittleEndian>()?;
             let p = cursor.read_i16::<LittleEndian>()?;
             let t = cursor.read_i64::<LittleEndian>()?;
+
+            if i < 3 {
+                eprintln!("Raw event {}: x={}, y={}, p={}, t={}", i, x, y, p, t);
+            }
+
+            // Validate event values to catch garbage data early
+            if x > 2048 || y > 2048 {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!(
+                        "Invalid coordinates in raw event {}: x={}, y={} (outside sensor range)",
+                        i, x, y
+                    ),
+                ));
+            }
+
+            if p.abs() > 10000 {
+                // Very generous bound to catch obvious garbage
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("Invalid polarity in raw event {}: p={} (too large)", i, p),
+                ));
+            }
+
+            // Check for reasonable timestamp ranges
+            if t.abs() > 1_000_000_000_000_000_000 {
+                // Very large positive or negative values
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!(
+                        "Invalid timestamp in raw event {}: t={} (outside reasonable range)",
+                        i, t
+                    ),
+                ));
+            }
 
             events.push(PropheseeEvent { x, y, p, t });
         }
