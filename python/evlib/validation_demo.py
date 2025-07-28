@@ -98,7 +98,7 @@ def demo_validation() -> Dict[str, Any]:
 
     results = {}
 
-    print("🔍 Event Data Validation Demo")
+    print("Event Data Validation Demo")
     print("=" * 50)
 
     # Test 1: Valid Prophesee Gen4 data
@@ -106,14 +106,14 @@ def demo_validation() -> Dict[str, Any]:
     valid_events = create_test_events(1000, "prophesee_gen4", add_garbage=False)
     validation_result = validate_events(valid_events, sensor_type="prophesee_gen4", strict=True)
 
-    print(f"   ✅ Valid: {validation_result['valid']}")
+    print(f"   Valid: {validation_result['valid']}")
     if validation_result["statistics"]:
         stats = validation_result["statistics"]
-        print(f"   📊 Event count: {stats['event_count']}")
-        print(f"   📍 X range: {stats['coordinate_ranges']['x']}")
-        print(f"   📍 Y range: {stats['coordinate_ranges']['y']}")
-        print(f"   ⏱️  Time range: {stats['timestamp_range'][0]:.3f} - {stats['timestamp_range'][1]:.3f}s")
-        print(f"   ⚡ Polarities: {stats['unique_polarities']}")
+        print(f"   Event count: {stats['event_count']}")
+        print(f"   X range: {stats['coordinate_ranges']['x']}")
+        print(f"   Y range: {stats['coordinate_ranges']['y']}")
+        print(f"   Time range: {stats['timestamp_range'][0]:.3f} - {stats['timestamp_range'][1]:.3f}s")
+        print(f"   Polarities: {stats['unique_polarities']}")
 
     results["valid_gen4"] = validation_result
 
@@ -122,9 +122,9 @@ def demo_validation() -> Dict[str, Any]:
     invalid_events = create_test_events(1000, "prophesee_gen4", add_garbage=True)
     validation_result = validate_events(invalid_events, sensor_type="prophesee_gen4", strict=True)
 
-    print(f"   ❌ Valid: {validation_result['valid']}")
+    print(f"   Valid: {validation_result['valid']}")
     if validation_result["errors"]:
-        print(f"   🚨 Errors found: {len(validation_result['errors'])}")
+        print(f"   Errors found: {len(validation_result['errors'])}")
         for error in validation_result["errors"][:2]:  # Show first 2 errors
             print(f"      - {error['type']}: {error['message'][:100]}...")
 
@@ -135,8 +135,8 @@ def demo_validation() -> Dict[str, Any]:
     quick_valid = quick_validate_events(valid_events)
     quick_invalid = quick_validate_events(invalid_events)
 
-    print(f"   ⚡ Quick valid check: {quick_valid}")
-    print(f"   ⚡ Quick invalid check: {quick_invalid}")
+    print(f"   Quick valid check: {quick_valid}")
+    print(f"   Quick invalid check: {quick_invalid}")
 
     results["quick_validation"] = {"valid_data": quick_valid, "invalid_data": quick_invalid}
 
@@ -146,18 +146,18 @@ def demo_validation() -> Dict[str, Any]:
 
     # Test with correct sensor type (should pass)
     davis_validation = validate_events(davis_events, sensor_type="davis346", strict=True)
-    print(f"   ✅ DAVIS with DAVIS schema: {davis_validation['valid']}")
+    print(f"   DAVIS with DAVIS schema: {davis_validation['valid']}")
 
     # Test with wrong sensor type (should fail due to coordinate constraints)
     prophesee_validation = validate_events(davis_events, sensor_type="prophesee_gen4", strict=True)
-    print(f"   ❌ DAVIS with Prophesee schema: {prophesee_validation['valid']}")
+    print(f"   DAVIS with Prophesee schema: {prophesee_validation['valid']}")
 
     results["sensor_constraints"] = {
         "davis_with_davis_schema": davis_validation["valid"],
         "davis_with_prophesee_schema": prophesee_validation["valid"],
     }
 
-    print("\n✅ Validation demonstration complete!")
+    print("\nValidation demonstration complete!")
     return results
 
 
@@ -177,14 +177,14 @@ def validate_loaded_events(
     """
 
     if verbose:
-        print(f"🔍 Validating events for {sensor_type} sensor...")
+        print(f"Validating events for {sensor_type} sensor...")
 
     # First try quick validation
     quick_result = quick_validate_events(events_df)
 
     if not quick_result:
         if verbose:
-            print("❌ Quick validation failed - data contains obvious errors")
+            print("Quick validation failed - data contains obvious errors")
         return False
 
     # Then try strict validation
@@ -192,21 +192,21 @@ def validate_loaded_events(
 
     if verbose:
         if validation_result["valid"]:
-            print("✅ Validation passed!")
+            print("Validation passed!")
             if validation_result["statistics"]:
                 stats = validation_result["statistics"]
-                print(f"   📊 Events: {stats['event_count']:,}")
+                print(f"   Events: {stats['event_count']:,}")
                 print(
-                    f"   📍 Coordinates: x={stats['coordinate_ranges']['x']}, y={stats['coordinate_ranges']['y']}"
+                    f"   Coordinates: x={stats['coordinate_ranges']['x']}, y={stats['coordinate_ranges']['y']}"
                 )
-                print(f"   ⚡ Polarities: {stats['unique_polarities']}")
+                print(f"   Polarities: {stats['unique_polarities']}")
                 time_range = stats["timestamp_range"]
                 duration = time_range[1] - time_range[0]
-                print(f"   ⏱️  Duration: {duration:.3f}s ({time_range[0]:.3f} to {time_range[1]:.3f})")
+                print(f"   Duration: {duration:.3f}s ({time_range[0]:.3f} to {time_range[1]:.3f})")
         else:
-            print("❌ Validation failed!")
+            print("Validation failed!")
             for error in validation_result["errors"]:
-                print(f"   🚨 {error['type']}: {error['message']}")
+                print(f"   {error['type']}: {error['message']}")
 
     return validation_result["valid"]
 

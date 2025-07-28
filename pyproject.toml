@@ -107,5 +107,7 @@ line_length = 110
 remove_unused_imports = false
 
 [tool.ruff]
-ignore = ["F401"]  # F401 = unused imports
 line-length = 110
+
+[tool.ruff.lint]
+ignore = ["F401"]  # F401 = unused imports
