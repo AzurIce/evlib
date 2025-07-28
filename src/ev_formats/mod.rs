@@ -319,10 +319,7 @@ pub fn load_events_from_hdf5(path: &str, dataset_name: Option<&str>) -> hdf5_met
             // Use our native Rust ECF decoder first - it now properly handles Prophesee format
             match hdf5_reader::read_prophesee_hdf5_native(path) {
                 Ok(events) => {
-                    eprintln!(
-                        "SUCCESS: Native Rust ECF decoder loaded {} events",
-                        events.len()
-                    );
+                    // Success message already printed by read_prophesee_hdf5_native()
                     return Ok(events);
                 }
                 Err(e) => {

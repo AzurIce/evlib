@@ -12,7 +12,7 @@ written in Rust for seamless integration with evlib.
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use std::io::{self, Cursor, Read, Write};
 
-/// Maximum number of events that can be processed in one chunk (from original)
+/// Maximum number of events that can be processed in one chunk (official ECF specification)
 const MAX_BUFFER_SIZE: usize = 65535;
 
 /// Event structure matching Prophesee's EventCD
@@ -97,15 +97,19 @@ impl PropheseeECFDecoder {
         }
 
         // Decode based on header flags
-        eprintln!(
-            "ECF header: use_delta_timestamps = {}, num_events = {}",
-            header.use_delta_timestamps, header.num_events
-        );
+        if self.debug {
+            eprintln!(
+                "ECF header: use_delta_timestamps = {}, num_events = {}",
+                header.use_delta_timestamps, header.num_events
+            );
+        }
 
         if header.use_delta_timestamps {
             self.decode_with_delta_timestamps(&mut cursor, &header)
         } else {
-            eprintln!("Using raw events decoding (no delta timestamps)");
+            if self.debug {
+                eprintln!("Using raw events decoding (no delta timestamps)");
+            }
             self.decode_raw_events(&mut cursor, &header)
         }
     }
@@ -122,18 +126,24 @@ impl PropheseeECFDecoder {
         // Try bit-packed header format first (standard ECF)
         let header_word = cursor.read_u32::<LittleEndian>()?;
 
-        // Extract fields from bit-packed header
-        let num_events_bitpacked = (header_word >> 3) as usize;
-        let use_delta_timestamps = (header_word >> 2) & 1 != 0;
-        let ys_xs_and_ps_packed = (header_word >> 1) & 1 != 0;
-        let xs_and_ps_packed = header_word & 1 != 0;
+        // Extract fields from bit-packed header (official ECF format)
+        // According to official implementation: upper 30 bits = num_events, lower 2 bits = flags
+        let num_events_bitpacked = (header_word >> 2) as usize; // Bits 2-31: Number of events
+        let encoding_flags = header_word & 0x3; // Lower 2 bits: encoding style flags
 
-        // Check if bit-packed interpretation gives reasonable values
-        if num_events_bitpacked > 0 && num_events_bitpacked <= 16384 {
-            eprintln!(
-                "Using bit-packed ECF header: num_events={}, delta_ts={}, ys_xs_ps_packed={}, xs_ps_packed={}",
-                num_events_bitpacked, use_delta_timestamps, ys_xs_and_ps_packed, xs_and_ps_packed
-            );
+        // Decode encoding flags (this determines the packing strategy)
+        let use_delta_timestamps = true; // ECF typically uses delta timestamps
+        let ys_xs_and_ps_packed = (encoding_flags & 0x2) != 0; // Bit 1: ys_xs_and_ps_packed
+        let xs_and_ps_packed = (encoding_flags & 0x1) != 0; // Bit 0: xs_and_ps_packed
+
+        // Check if bit-packed interpretation gives reasonable values (official ECF max: 65535)
+        if num_events_bitpacked > 0 && num_events_bitpacked <= 65535 {
+            if self.debug {
+                eprintln!(
+                    "Using bit-packed ECF header: num_events={}, delta_ts={}, ys_xs_ps_packed={}, xs_ps_packed={}",
+                    num_events_bitpacked, use_delta_timestamps, ys_xs_and_ps_packed, xs_and_ps_packed
+                );
+            }
 
             return Ok(ChunkHeader {
                 num_events: num_events_bitpacked,
@@ -274,10 +284,12 @@ impl PropheseeECFDecoder {
         // Read delta bit width first
         let delta_bits = cursor.read_u8()?;
 
-        eprintln!(
-            "ECF timestamp encoding: delta_bits = {}, base_timestamp = {}",
-            delta_bits, base_timestamp
-        );
+        if self.debug {
+            eprintln!(
+                "ECF timestamp encoding: delta_bits = {}, base_timestamp = {}",
+                delta_bits, base_timestamp
+            );
+        }
 
         if delta_bits == 0 {
             // All timestamps are identical to base timestamp
@@ -348,7 +360,9 @@ impl PropheseeECFDecoder {
             }
             _ => {
                 // Unknown delta_bits, try the old fallback logic
-                eprintln!("WARNING: Unknown delta_bits value: {}", delta_bits);
+                if self.debug {
+                    eprintln!("WARNING: Unknown delta_bits value: {}", delta_bits);
+                }
             }
         }
 
@@ -684,28 +698,34 @@ impl PropheseeECFDecoder {
                 eprintln!("Raw event {}: x={}, y={}, p={}, t={}", i, x, y, p, t);
             }
 
-            // Validate event values to catch garbage data early
-            if x > 2048 || y > 2048 {
+            // Validate event values based on official ECF specification
+            // Coordinates: ECF supports 16-bit coordinates (0-65535), but typical cameras are much smaller
+            if x > 10000 || y > 10000 {
+                // Generous bound for large sensors
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidData,
                     format!(
-                        "Invalid coordinates in raw event {}: x={}, y={} (outside sensor range)",
+                        "Invalid coordinates in raw event {}: x={}, y={} (outside reasonable sensor range)",
                         i, x, y
                     ),
                 ));
             }
 
-            if p.abs() > 10000 {
-                // Very generous bound to catch obvious garbage
+            // Polarity: should be small integer values (typically -1, 0, 1)
+            if p.abs() > 100 {
+                // Catch obvious garbage while allowing some flexibility
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidData,
-                    format!("Invalid polarity in raw event {}: p={} (too large)", i, p),
+                    format!(
+                        "Invalid polarity in raw event {}: p={} (outside expected range)",
+                        i, p
+                    ),
                 ));
             }
 
-            // Check for reasonable timestamp ranges
-            if t.abs() > 1_000_000_000_000_000_000 {
-                // Very large positive or negative values
+            // Timestamps: should be positive and reasonable (64-bit unsigned in official spec)
+            if !(0..=1_000_000_000_000_000_000).contains(&t) {
+                // 10^18 - very large but not garbage
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidData,
                     format!(

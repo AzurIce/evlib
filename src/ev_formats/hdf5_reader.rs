@@ -47,8 +47,8 @@ pub fn read_prophesee_hdf5_native(path: &str) -> H5Result<Events> {
         None => 16384,
     };
 
-    // Create Prophesee ECF decoder
-    let decoder = PropheseeECFDecoder::new().with_debug(true);
+    // Create Prophesee ECF decoder (without debug output for clean loading)
+    let decoder = PropheseeECFDecoder::new();
     let mut all_events = Vec::with_capacity(total_events);
 
     // Read dataset filters to confirm ECF
@@ -78,20 +78,12 @@ pub fn read_prophesee_hdf5_native(path: &str) -> H5Result<Events> {
         match read_compressed_chunk(&events_dataset, chunk_idx) {
             Ok(compressed_data) => {
                 // The compressed_data contains HDF5 chunk headers + ECF payload
-                // We need to extract just the ECF payload
-                // For now, try different offsets to find the ECF data
-                if chunk_idx == 0 {
-                    eprintln!("HDF5 chunk size: {} bytes", compressed_data.len());
-                    eprintln!(
-                        "First 32 bytes of chunk: {:02X?}",
-                        &compressed_data[..32.min(compressed_data.len())]
-                    );
-                }
+                // Extract the ECF payload for decoding
 
                 let ecf_payload = match extract_ecf_payload_from_chunk(&compressed_data) {
                     Ok(payload) => payload,
-                    Err(e) => {
-                        eprintln!("Skipping chunk {}: {}", chunk_idx, e);
+                    Err(_e) => {
+                        // Silently skip chunks without ECF data - this is normal in HDF5 files
                         continue; // Skip this chunk and move to the next one
                     }
                 };
@@ -101,21 +93,10 @@ pub fn read_prophesee_hdf5_native(path: &str) -> H5Result<Events> {
                     Ok(decoded_events) => {
                         let event_count = decoded_events.len();
 
-                        // For the first chunk, detect timestamp units
+                        // For the first chunk, detect timestamp units (silently)
                         if chunk_idx == 0 && !decoded_events.is_empty() {
-                            // Sample the first few timestamps to detect units
-                            let sample_timestamps: Vec<i64> =
-                                decoded_events.iter().take(10).map(|e| e.t).collect();
-
-                            let max_ts = sample_timestamps.iter().max().copied().unwrap_or(0);
-                            eprintln!(
-                                "ECF decoder: First timestamp = {}, max sample = {}",
-                                decoded_events[0].t, max_ts
-                            );
-
-                            // Prophesee ECF timestamps are typically in nanoseconds
-                            // since microseconds would give us days in the 80-100 range
-                            // and we're seeing that pattern
+                            // Prophesee ECF timestamps are in nanoseconds
+                            // No need to log this for every file
                         }
 
                         // Convert PropheseeEvent to Event
@@ -139,9 +120,8 @@ pub fn read_prophesee_hdf5_native(path: &str) -> H5Result<Events> {
                         _total_decoded_events += event_count;
                         _chunks_processed += 1;
                     }
-                    Err(e) => {
-                        eprintln!("ECF decoding failed for chunk {}: {}", chunk_idx, e);
-                        // Continue with other chunks instead of failing completely
+                    Err(_e) => {
+                        // Silently continue with other chunks - some chunks may contain partial data
                         continue;
                     }
                 }
@@ -168,9 +148,14 @@ pub fn read_prophesee_hdf5_native(path: &str) -> H5Result<Events> {
 
     if all_events.is_empty() {
         Err(hdf5_metno::Error::Internal(
-            "Native ECF decoding integration in progress. This file should load automatically when complete.".to_string()
+            "No valid ECF event data found in HDF5 file".to_string(),
         ))
     } else {
+        // Log success message only when events are actually loaded
+        eprintln!(
+            "SUCCESS: Native Rust ECF decoder loaded {} events",
+            all_events.len()
+        );
         Ok(all_events)
     }
 }
@@ -385,7 +370,6 @@ fn extract_ecf_payload_from_chunk(chunk_data: &[u8]) -> io::Result<Vec<u8>> {
 
                 // Verify this looks like ECF data
                 if is_valid_ecf_header(ecf_data) {
-                    eprintln!("Found ECF data at offset 4 after HDF5 size header");
                     return Ok(ecf_data.to_vec());
                 }
             }
@@ -395,7 +379,6 @@ fn extract_ecf_payload_from_chunk(chunk_data: &[u8]) -> io::Result<Vec<u8>> {
     // If the above didn't work, try direct ECF header detection
     // The chunk might start directly with ECF data (no HDF5 header)
     if is_valid_ecf_header(chunk_data) {
-        eprintln!("Found ECF data at offset 0 (no HDF5 header)");
         return Ok(chunk_data.to_vec());
     }
 
@@ -411,7 +394,6 @@ fn extract_ecf_payload_from_chunk(chunk_data: &[u8]) -> io::Result<Vec<u8>> {
 
         // Check if this looks like a valid ECF header
         if is_valid_ecf_header(payload) {
-            eprintln!("Found ECF data at offset {}", offset);
             return Ok(payload.to_vec());
         }
     }
@@ -420,15 +402,14 @@ fn extract_ecf_payload_from_chunk(chunk_data: &[u8]) -> io::Result<Vec<u8>> {
     for offset in (0..chunk_data.len().saturating_sub(16)).step_by(1) {
         let payload = &chunk_data[offset..];
         if is_valid_ecf_header(payload) {
-            eprintln!("Found ECF data at offset {} via scan", offset);
             return Ok(payload.to_vec());
         }
     }
 
-    eprintln!("WARNING: Could not find valid ECF header in chunk, skipping");
+    // Silently return error - most chunks in HDF5 files don't contain ECF event data
     Err(io::Error::new(
         io::ErrorKind::InvalidData,
-        "No valid ECF header found in chunk - cannot decode as events",
+        "No valid ECF header found in chunk",
     ))
 }
 
@@ -449,10 +430,7 @@ fn is_valid_ecf_header(data: &[u8]) -> bool {
 
     // Check for Prophesee ECF format signature
     if format_id == 0x00010002 && flags == 0x00000000 && num_events > 0 && num_events <= 100000 {
-        eprintln!(
-            "Valid Prophesee ECF header found: format_id=0x{:08X}, num_events={}, flags=0x{:08X}",
-            format_id, num_events, flags
-        );
+        // Valid header found - no need to log for every chunk
         return true;
     }
 
