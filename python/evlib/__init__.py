@@ -43,6 +43,9 @@ x, y, t, p = evlib.formats.load_events("path/to/your/data.h5")
 - `evlib.formats`: Data loading and format detection
 - `evlib.filtering`: High-performance event filtering
 - `evlib.representations`: Event-to-representation conversion
+- `evlib.simulation`: Event camera simulation (ESIM algorithm for video-to-events)
+- `evlib.visualization`: Event visualization tools
+- `evlib.models`: Deep learning models (E2VID, RVT)
 - `evlib.core`: Core data structures and utilities
 
 """
@@ -160,6 +163,11 @@ try:
     from . import visualization
 except ImportError:
     visualization = None
+
+try:
+    from . import simulation
+except ImportError:
+    simulation = None
 
 
 # Make representation functions directly accessible for backwards compatibility
@@ -431,3 +439,5 @@ if streaming_utils:
     __all__.append("streaming_utils")
 if pytorch:
     __all__.append("pytorch")
+if simulation:
+    __all__.append("simulation")
