@@ -38,7 +38,8 @@ class ESIMSimulator:
 
         self.config = config
         self._device = self._setup_device()
-        self._dtype = torch.float64 if config.dtype == "float64" else torch.float32
+        # Set dtype, but check device compatibility
+        self._dtype = self._get_compatible_dtype()
 
         # Internal state tensors (initialized on first frame)
         self._log_last_intensity: Optional[torch.Tensor] = None
@@ -52,15 +53,37 @@ class ESIMSimulator:
     def _setup_device(self) -> torch.device:
         """Set up the computing device based on configuration."""
         if self.config.device == "auto":
-            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            # Auto-select the best available device
+            if torch.cuda.is_available():
+                device = torch.device("cuda")
+            elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+                device = torch.device("mps")
+            else:
+                device = torch.device("cpu")
         else:
             device = torch.device(self.config.device)
 
+        # Validate device availability
         if device.type == "cuda" and not torch.cuda.is_available():
             warnings.warn("CUDA requested but not available, falling back to CPU")
             device = torch.device("cpu")
+        elif device.type == "mps":
+            if not (hasattr(torch.backends, "mps") and torch.backends.mps.is_available()):
+                warnings.warn("MPS requested but not available, falling back to CPU")
+                device = torch.device("cpu")
 
         return device
+
+    def _get_compatible_dtype(self) -> torch.dtype:
+        """Get dtype compatible with the selected device."""
+        requested_dtype = torch.float64 if self.config.dtype == "float64" else torch.float32
+
+        # MPS doesn't support float64
+        if self._device.type == "mps" and requested_dtype == torch.float64:
+            warnings.warn("MPS does not support float64, using float32 instead")
+            return torch.float32
+
+        return requested_dtype
 
     def reset(self) -> None:
         """Reset the simulator state."""

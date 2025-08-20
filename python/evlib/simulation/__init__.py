@@ -27,9 +27,9 @@ __all__ = ["ESIMConfig", "VideoConfig"]
 
 # Import classes based on available dependencies
 if _opencv_available:
-    from .video_processor import VideoToEvents
+    from .video_processor import VideoToEvents, estimate_event_count
 
-    __all__.append("VideoToEvents")
+    __all__.extend(["VideoToEvents", "estimate_event_count"])
 
     # Convenience function for high-level API
     def video_to_events(video_path, esim_config=None, video_config=None):

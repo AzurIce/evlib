@@ -25,7 +25,7 @@ class ESIMConfig:
     negative_threshold: float = 0.4
     refractory_period_ms: float = 0.1
     log_floor: float = 0.001
-    device: Literal["cuda", "cpu", "auto"] = "auto"
+    device: Literal["cuda", "mps", "cpu", "auto"] = "auto"
     dtype: Literal["float32", "float64"] = "float64"
     extra_params: Dict[str, Any] = field(default_factory=dict)
 

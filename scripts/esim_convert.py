@@ -22,8 +22,17 @@ def check_dependencies():
     try:
         import torch
 
-        if not torch.cuda.is_available():
-            print("Warning: PyTorch is installed, but CUDA is not available. Processing will run on CPU.")
+        # Check available acceleration
+        available_devices = ["CPU"]
+        if torch.cuda.is_available():
+            available_devices.append("CUDA")
+        if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+            available_devices.append("MPS")
+
+        print(f"Available PyTorch devices: {', '.join(available_devices)}")
+
+        if len(available_devices) == 1:  # Only CPU
+            print("Warning: No GPU acceleration available. Processing will run on CPU only.")
     except ImportError:
         missing.append("torch")
 
@@ -67,7 +76,9 @@ def main():
     parser.add_argument(
         "--refractory_period", type=float, default=0.1, help="Refractory period in milliseconds"
     )
-    parser.add_argument("--device", choices=["auto", "cuda", "cpu"], default="auto", help="Computing device")
+    parser.add_argument(
+        "--device", choices=["auto", "cuda", "mps", "cpu"], default="auto", help="Computing device"
+    )
 
     # Video Configuration
     parser.add_argument("--width", type=int, default=640, help="Width to resize video frames")
@@ -167,6 +178,12 @@ def main():
             print(f"Negative threshold: {esim_config.negative_threshold}")
             print(f"Refractory period: {esim_config.refractory_period_ms} ms")
             print(f"Device: {esim_config.device}")
+
+            # Show actual device that will be used
+            temp_processor = VideoToEvents(esim_config, VideoConfig())
+            actual_device = temp_processor.simulator.device
+            if str(actual_device) != esim_config.device:
+                print(f"Actual device: {actual_device}")
             print()
 
         except Exception as e:
@@ -204,6 +221,8 @@ def main():
     print(f"Output: {args.output_file}")
 
     try:
+        import numpy as np
+
         start_time = time.time()
 
         if args.streaming:
@@ -222,8 +241,6 @@ def main():
                         print(f"Processed {event_count:,} events...")
 
             # Convert to numpy arrays
-            import numpy as np
-
             x_np = np.array(all_events[0], dtype=np.int64)
             y_np = np.array(all_events[1], dtype=np.int64)
             t_np = np.array(all_events[2], dtype=np.float64)

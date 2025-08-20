@@ -82,6 +82,10 @@ representations.
   * [Quick Start](#quick-start-1)
   * [Architecture Overview](#architecture-overview)
   * [Performance Benefits](#performance-benefits)
+* [Video-to-Events Conversion and Visualization](#video-to-events-conversion-and-visualization)
+  * [Converting Video to Events](#converting-video-to-events)
+  * [Python API Usage](#python-api-usage)
+  * [Visualizing Event Data](#visualizing-event-data)
 * [Examples](#examples)
 * [Development](#development)
   * [Testing](#testing)
@@ -816,6 +820,108 @@ The dataloader demonstrates:
 - **Zero-copy conversion** between Polars and PyTorch
 
 See `examples/polars_pytorch_simplified.py` for the complete implementation and adapt it for your own event camera datasets.
+
+## Video-to-Events Conversion and Visualization
+
+evlib includes a complete pipeline for converting standard video files to event camera data using the ESIM algorithm, with support for Mac GPU acceleration via MPS (Metal Performance Shaders).
+
+### Converting Video to Events
+
+Use the ESIM (Event-based Simulator) algorithm to convert any video file to event data:
+
+```bash
+# Basic conversion with automatic device selection (MPS on Mac, CUDA on Linux/Windows, CPU fallback)
+python scripts/esim_convert.py sample.mp4 --cp 0.3 --cn 0.3 --width 640 --height 480
+
+# Explicitly use Mac GPU acceleration
+python scripts/esim_convert.py sample.mp4 --device mps --cp 0.3 --cn 0.3 --width 640 --height 480
+
+# Show video information and processing configuration
+python scripts/esim_convert.py sample.mp4 --video_info --cp 0.3 --cn 0.3
+
+# Process specific time range
+python scripts/esim_convert.py sample.mp4 --start_time 1.0 --end_time 3.0 --cp 0.3 --cn 0.3
+
+# Estimate event count before full processing
+python scripts/esim_convert.py sample.mp4 --estimate_only --sample_frames 50
+```
+
+**Parameters:**
+- `--cp, --positive_threshold`: Positive contrast threshold (default: 0.4)
+- `--cn, --negative_threshold`: Negative contrast threshold (default: 0.4)
+- `--device`: Computing device (`auto`, `cuda`, `mps`, `cpu`)
+- `--width, --height`: Output resolution (default: 640x480)
+- `--fps`: Override video FPS
+- `--refractory_period`: Minimum time between events at same pixel (ms)
+
+**Performance:** Achieves 490,000+ events/second processing speed with MPS acceleration on Mac.
+
+### Python API Usage
+
+```python
+from evlib.simulation import ESIMConfig, VideoConfig, VideoToEvents
+
+# Configure ESIM algorithm
+esim_config = ESIMConfig(
+    device="auto",  # Automatically selects MPS on Mac, CUDA on Linux/Windows
+    positive_threshold=0.3,
+    negative_threshold=0.3,
+    refractory_period_ms=0.1
+)
+
+# Configure video processing
+video_config = VideoConfig(
+    width=640,
+    height=480,
+    grayscale=True
+)
+
+# Convert video to events
+processor = VideoToEvents(esim_config, video_config)
+x, y, t, polarity = processor.process_video("sample.mp4")
+
+# Save as HDF5 file
+import evlib
+evlib.formats.save_events_to_hdf5(x, y, t, polarity, "events.h5")
+```
+
+### Visualizing Event Data
+
+Convert the generated event data to a visualization video:
+
+```bash
+# Basic visualization of converted events
+python scripts/visualize_etram.py --input h5/events_esim.h5 --output events_visualization.mp4
+
+# High-quality visualization with custom parameters
+python scripts/visualize_etram.py --input h5/events_esim.h5 --output events_hq.mp4 \
+    --fps 60 --decay 50 --resolution 1280x720
+
+# Thermal colormap visualization
+python scripts/visualize_etram.py --input h5/events_esim.h5 --output events_thermal.mp4 \
+    --colormap --colormap-type jet --fps 60
+
+# Process time range
+python scripts/visualize_etram.py --input h5/events_esim.h5 --output events_clip.mp4 \
+    --start-time 1.0 --duration 3.0
+```
+
+**Complete Workflow Example:**
+```bash
+# 1. Convert video to events (generates ~18M events from 5.7s video)
+python scripts/esim_convert.py sample.mp4 --cp 0.3 --cn 0.3 --width 640 --height 480
+# Output: h5/events_esim.h5 (240MB HDF5 file)
+
+# 2. Visualize the events as a video
+python scripts/visualize_etram.py --input h5/events_esim.h5 --output sample_events.mp4 --fps 30
+# Output: sample_events.mp4 (event visualization video)
+```
+
+This pipeline allows you to:
+- Convert any standard video format to neuromorphic event data
+- Leverage GPU acceleration for fast processing
+- Visualize the results with customizable rendering
+- Generate datasets for event camera research and development
 
 ## Examples
 

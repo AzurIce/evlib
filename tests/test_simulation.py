@@ -210,6 +210,46 @@ class TestESIMSimulator:
         assert "shape" in state
         assert "buffer_stats" in state
 
+    def test_mps_device_support(self):
+        """Test MPS device support and dtype compatibility."""
+        from evlib.simulation.config import ESIMConfig
+        from evlib.simulation.esim import ESIMSimulator
+        import torch
+
+        # Test MPS device selection with auto
+        config = ESIMConfig(device="auto")
+        simulator = ESIMSimulator(config)
+
+        # Should be MPS if available, otherwise CPU/CUDA
+        expected_devices = {"cpu", "cuda", "mps"}
+        assert simulator.device.type in expected_devices
+
+        # Test explicit MPS device request
+        if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+            config_mps = ESIMConfig(device="mps", dtype="float64")  # This should auto-convert
+            simulator_mps = ESIMSimulator(config_mps)
+
+            # Should use MPS device
+            assert simulator_mps.device.type == "mps"
+            # Should auto-convert to float32 for MPS compatibility
+            assert simulator_mps._dtype == torch.float32
+
+    def test_device_dtype_compatibility(self):
+        """Test device and dtype compatibility handling."""
+        from evlib.simulation.config import ESIMConfig
+        from evlib.simulation.esim import ESIMSimulator
+        import torch
+
+        # Test CPU with float64 (should work)
+        config = ESIMConfig(device="cpu", dtype="float64")
+        simulator = ESIMSimulator(config)
+        assert simulator._dtype == torch.float64
+
+        # Test CPU with float32 (should work)
+        config = ESIMConfig(device="cpu", dtype="float32")
+        simulator = ESIMSimulator(config)
+        assert simulator._dtype == torch.float32
+
 
 # Test video processor (requires OpenCV and PyTorch)
 @pytest.mark.skipif(
