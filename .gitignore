@@ -716,6 +716,7 @@ dkms.conf
 *.local.*
 
 *.mp4
+!sample.mp4
 tests/*.png
 
 # Temporary Cargo config for Python linking
