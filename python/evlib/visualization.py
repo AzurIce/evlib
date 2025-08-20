@@ -123,12 +123,46 @@ class eTramDataLoader:
             self._setup_hdf5_plugins_static()
 
             with h5py.File(self.h5_file_path, "r") as f:
-                data_shape = f["data"].shape
-                self.num_frames = data_shape[0]
-                self.num_bins = data_shape[1]
-                self.height = data_shape[2]
-                self.width = data_shape[3]
-                self.dtype = f["data"].dtype
+                # Check for both data formats: "data" key (eTram/representations) or "events" group (raw events)
+                if "data" in f:
+                    # Standard format: 4D representation data
+                    data_shape = f["data"].shape
+                    self.num_frames = data_shape[0]
+                    self.num_bins = data_shape[1]
+                    self.height = data_shape[2]
+                    self.width = data_shape[3]
+                    self.dtype = f["data"].dtype
+                    self.data_format = "representation"
+                elif "events" in f:
+                    # Raw events format: need to convert to representation format on-demand
+                    events_group = f["events"]
+                    if not all(key in events_group for key in ["xs", "ys", "ts", "ps"]):
+                        raise ValueError("Events group missing required datasets (xs, ys, ts, ps)")
+
+                    # Load event data to determine dimensions
+                    xs = events_group["xs"][:]
+                    ys = events_group["ys"][:]
+                    ts = events_group["ts"][:]
+                    ps = events_group["ps"][:]
+
+                    # Determine spatial dimensions from event coordinates
+                    self.height = int(ys.max()) + 1
+                    self.width = int(xs.max()) + 1
+
+                    # Create temporal bins (default 10 bins)
+                    self.num_bins = 10
+                    t_min, t_max = ts.min(), ts.max()
+                    duration = t_max - t_min
+                    frame_duration = 0.05  # 50ms frames
+                    self.num_frames = max(1, int(duration / frame_duration))
+
+                    self.dtype = np.float32
+                    self.data_format = "raw_events"
+
+                    # Cache event data for on-demand conversion
+                    self._cached_events = {"xs": xs, "ys": ys, "ts": ts, "ps": ps}
+                else:
+                    raise ValueError("HDF5 file must contain either 'data' dataset or 'events' group")
 
             # Load timestamps
             timestamp_file = (
@@ -172,12 +206,17 @@ class eTramDataLoader:
             raise ValueError(f"Frame index {frame_idx} out of range [0, {self.num_frames})")
 
         try:
-            # Ensure HDF5 plugins are set up before each file access
-            self._setup_hdf5_plugins()
-
-            with h5py.File(self.h5_file_path, "r") as f:
-                frame_data = f["data"][frame_idx]
-                return frame_data
+            if self.data_format == "representation":
+                # Standard format: read directly from "data" dataset
+                self._setup_hdf5_plugins()
+                with h5py.File(self.h5_file_path, "r") as f:
+                    frame_data = f["data"][frame_idx]
+                    return frame_data
+            elif self.data_format == "raw_events":
+                # Raw events format: convert to representation on-demand
+                return self._convert_events_to_frame(frame_idx)
+            else:
+                raise ValueError(f"Unknown data format: {self.data_format}")
         except Exception as e:
             raise RuntimeError(f"Failed to load frame {frame_idx}: {e}")
 
@@ -191,6 +230,87 @@ class eTramDataLoader:
                 hdf5plugin.register()
         except ImportError:
             pass  # Already warned during module import
+
+    def _convert_events_to_frame(self, frame_idx: int) -> np.ndarray:
+        """Convert raw events to a single representation frame."""
+        if not hasattr(self, "_cached_events"):
+            raise RuntimeError("No cached events available for conversion")
+
+        # Extract event data
+        xs, ys, ts, ps = (
+            self._cached_events["xs"],
+            self._cached_events["ys"],
+            self._cached_events["ts"],
+            self._cached_events["ps"],
+        )
+
+        # Calculate time window for this frame
+        t_min, t_max = ts.min(), ts.max()
+        duration = t_max - t_min
+        frame_duration = duration / self.num_frames
+        frame_start = t_min + frame_idx * frame_duration
+        frame_end = t_min + (frame_idx + 1) * frame_duration
+
+        # Filter events for this time window
+        mask = (ts >= frame_start) & (ts < frame_end)
+        frame_xs = xs[mask]
+        frame_ys = ys[mask]
+        frame_ts = ts[mask]
+        frame_ps = ps[mask]
+
+        # Create representation frame with polarity separation
+        # Even bins = positive events, odd bins = negative events (to match renderer expectations)
+        frame_data = np.zeros((self.num_bins, self.height, self.width), dtype=np.float32)
+
+        if len(frame_xs) > 0:
+            # Separate positive and negative events
+            pos_mask = frame_ps == 1
+            neg_mask = frame_ps == -1
+
+            pos_xs, pos_ys, pos_ts = frame_xs[pos_mask], frame_ys[pos_mask], frame_ts[pos_mask]
+            neg_xs, neg_ys, neg_ts = frame_xs[neg_mask], frame_ys[neg_mask], frame_ts[neg_mask]
+
+            # Create temporal bins within the frame
+            temporal_bins = self.num_bins // 2  # Half for positive, half for negative
+            bin_duration = frame_duration / temporal_bins
+
+            # Process positive events (even bins: 0, 2, 4, ...)
+            for bin_idx in range(temporal_bins):
+                bin_start = frame_start + bin_idx * bin_duration
+                bin_end = frame_start + (bin_idx + 1) * bin_duration
+
+                bin_mask = (pos_ts >= bin_start) & (pos_ts < bin_end)
+                bin_xs = pos_xs[bin_mask]
+                bin_ys = pos_ys[bin_mask]
+
+                # Accumulate positive events in even bins
+                for x, y in zip(bin_xs, bin_ys):
+                    if 0 <= x < self.width and 0 <= y < self.height:
+                        frame_data[bin_idx * 2, y, x] += 1.0  # Even bins for positive
+
+            # Process negative events (odd bins: 1, 3, 5, ...)
+            for bin_idx in range(temporal_bins):
+                bin_start = frame_start + bin_idx * bin_duration
+                bin_end = frame_start + (bin_idx + 1) * bin_duration
+
+                bin_mask = (neg_ts >= bin_start) & (neg_ts < bin_end)
+                bin_xs = neg_xs[bin_mask]
+                bin_ys = neg_ys[bin_mask]
+
+                # Accumulate negative events in odd bins
+                for x, y in zip(bin_xs, bin_ys):
+                    if 0 <= x < self.width and 0 <= y < self.height:
+                        frame_data[bin_idx * 2 + 1, y, x] += 1.0  # Odd bins for negative
+
+        return frame_data
+
+    def _convert_events_to_frames(self, start_idx: int, end_idx: int) -> np.ndarray:
+        """Convert raw events to multiple representation frames."""
+        frames = []
+        for frame_idx in range(start_idx, end_idx):
+            frame_data = self._convert_events_to_frame(frame_idx)
+            frames.append(frame_data)
+        return np.stack(frames, axis=0)
 
     @staticmethod
     def _setup_hdf5_plugins_static():
