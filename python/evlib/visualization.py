@@ -66,7 +66,7 @@ class VisualizationConfig:
     codec: str = "mp4v"
     quality: int = 90
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Calculate derived parameters."""
         self.frame_duration_ms = 1000.0 / self.fps
 
@@ -116,7 +116,7 @@ class eTramDataLoader:
 
         return None
 
-    def _load_metadata(self):
+    def _load_metadata(self) -> None:
         """Load metadata from HDF5 file and timestamps."""
         try:
             # Ensure HDF5 plugins are set up before metadata loading
@@ -220,7 +220,7 @@ class eTramDataLoader:
         except Exception as e:
             raise RuntimeError(f"Failed to load frame {frame_idx}: {e}")
 
-    def _setup_hdf5_plugins(self):
+    def _setup_hdf5_plugins(self) -> None:
         """Ensure HDF5 plugins are properly configured."""
         try:
             import hdf5plugin
@@ -313,7 +313,7 @@ class eTramDataLoader:
         return np.stack(frames, axis=0)
 
     @staticmethod
-    def _setup_hdf5_plugins_static():
+    def _setup_hdf5_plugins_static() -> None:
         """Static method for setting up HDF5 plugins."""
         try:
             import hdf5plugin
@@ -552,7 +552,7 @@ class EventFrameRenderer:
 
         return frame
 
-    def reset(self):
+    def reset(self) -> None:
         """Reset the renderer state."""
         self.frame_count = 0
         self.previous_frame = None

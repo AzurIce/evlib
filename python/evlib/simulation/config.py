@@ -29,7 +29,7 @@ class ESIMConfig:
     dtype: Literal["float32", "float64"] = "float64"
     extra_params: Dict[str, Any] = field(default_factory=dict)
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Validate configuration parameters."""
         if self.positive_threshold <= 0:
             raise ValueError("positive_threshold must be positive")
@@ -71,7 +71,7 @@ class VideoConfig:
     grayscale: bool = True
     extra_params: Dict[str, Any] = field(default_factory=dict)
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Validate configuration parameters."""
         if self.width is not None and self.width <= 0:
             raise ValueError("width must be positive")
