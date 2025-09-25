@@ -66,6 +66,7 @@ pub mod downsampling;
 pub mod drop_pixel;
 pub mod hot_pixel;
 pub mod polarity;
+#[cfg(feature = "python")]
 pub mod python;
 pub mod spatial;
 pub mod temporal; // Now Polars-first implementation

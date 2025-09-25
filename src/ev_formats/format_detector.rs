@@ -23,6 +23,7 @@ pub enum EventFormat {
     /// Plain text format with space-separated values
     Text,
     /// HDF5 hierarchical data format
+    #[cfg(feature = "hdf5")]
     HDF5,
     /// Address Event Representation (18-bit structure: 1 bit polarity + 9 bits x + 9 bits y)
     AER,
@@ -50,6 +51,7 @@ impl std::fmt::Display for EventFormat {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             EventFormat::Text => write!(f, "Text"),
+#[cfg(feature = "hdf5")]
             EventFormat::HDF5 => write!(f, "HDF5"),
             EventFormat::AER => write!(f, "AER"),
             EventFormat::AEDAT1 => write!(f, "AEDAT 1.0"),
@@ -192,6 +194,7 @@ impl FormatDetector {
 
         let (format, confidence) = match path.extension().and_then(|ext| ext.to_str()) {
             Some("txt") | Some("dat") => (EventFormat::Text, 0.7),
+            #[cfg(feature = "hdf5")]
             Some("h5") | Some("hdf5") => (EventFormat::HDF5, 0.8),
             Some("aer") => (EventFormat::AER, 0.6),
             Some("aedat") => (EventFormat::AEDAT2, 0.5), // Default to AEDAT2, will be refined by content
@@ -230,6 +233,7 @@ impl FormatDetector {
         };
 
         // Check for magic bytes
+        #[cfg(feature = "hdf5")]
         if Self::starts_with(&buffer, HDF5_MAGIC) {
             metadata.magic_bytes = Some(HDF5_MAGIC.to_vec());
             metadata
@@ -911,6 +915,7 @@ impl FormatDetector {
     pub fn get_format_description(format: &EventFormat) -> &'static str {
         match format {
             EventFormat::Text => "Plain text format with space-separated values (t x y p)",
+            #[cfg(feature = "hdf5")]
             EventFormat::HDF5 => "HDF5 hierarchical data format",
             EventFormat::AER => "Address Event Representation (18-bit structure)",
             EventFormat::AEDAT1 => "AEDAT 1.0 format (6 bytes per event)",
@@ -956,6 +961,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "hdf5")]
     fn test_detect_hdf5_format() {
         let temp_dir = TempDir::new().unwrap();
         let file_path = temp_dir.path().join("test.h5");
@@ -1005,7 +1011,9 @@ mod tests {
 
         // Test various extensions
         let test_cases = vec![
+            #[cfg(feature = "hdf5")]
             ("test.h5", EventFormat::HDF5),
+            #[cfg(feature = "hdf5")]
             ("test.hdf5", EventFormat::HDF5),
             ("test.txt", EventFormat::Text),
             ("test.aer", EventFormat::AER),

@@ -146,6 +146,7 @@ impl EventDataFrameBuilder {
                     .collect()?
             }
             #[cfg(not(windows))]
+            #[cfg(feature = "hdf5")]
             EventFormat::HDF5 => {
                 // HDF5: Convert 0/1 to -1/1 for proper polarity encoding
                 df.lazy()

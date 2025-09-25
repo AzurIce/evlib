@@ -276,6 +276,7 @@ impl PolarsEventStreamer {
                     )
                     .collect()?
             }
+            #[cfg(feature = "hdf5")]
             EventFormat::HDF5 => {
                 // HDF5 format: Convert 0/1 to -1/1 for consistency
                 df.lazy()
@@ -326,6 +327,7 @@ impl PolarsEventStreamer {
                     -1i8
                 }
             }
+            #[cfg(feature = "hdf5")]
             EventFormat::HDF5 => {
                 // HDF5 format converts 0/1 to -1/1 for consistency
                 if polarity {
@@ -424,6 +426,7 @@ mod tests {
     }
 
     #[cfg(feature = "polars")]
+    #[cfg(feature = "hdf5")]
     #[test]
     fn test_polars_event_streamer_empty() {
         let streamer = PolarsEventStreamer::new(1000, EventFormat::HDF5);
@@ -437,6 +440,7 @@ mod tests {
     }
 
     #[cfg(feature = "polars")]
+    #[cfg(feature = "hdf5")]
     #[test]
     fn test_polars_event_streamer_small_chunk() {
         let streamer = PolarsEventStreamer::new(2, EventFormat::HDF5);
@@ -474,6 +478,7 @@ mod tests {
     }
 
     #[cfg(feature = "polars")]
+    #[cfg(feature = "hdf5")]
     #[test]
     fn test_polarity_conversion() {
         let streamer_evt2 = PolarsEventStreamer::new(1000, EventFormat::EVT2);
@@ -487,6 +492,7 @@ mod tests {
     }
 
     #[cfg(feature = "polars")]
+    #[cfg(feature = "hdf5")]
     #[test]
     fn test_timestamp_conversion() {
         let streamer = PolarsEventStreamer::new(1000, EventFormat::HDF5);

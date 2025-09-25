@@ -2,6 +2,7 @@
 // Handles reading and writing events from various file formats
 
 #[cfg(not(windows))]
+#[cfg(feature = "hdf5")]
 use hdf5_metno::File as H5File;
 #[cfg(feature = "polars")]
 use polars::prelude::*;
@@ -72,6 +73,7 @@ pub use prophesee_ecf_codec::{PropheseeECFDecoder, PropheseeECFEncoder, Prophese
 
 // Native HDF5 reader with ECF support (disabled on Windows)
 #[cfg(not(windows))]
+#[cfg(feature = "hdf5")]
 pub mod hdf5_reader;
 
 // DataFrame construction utilities for direct event processing
@@ -243,6 +245,7 @@ impl LoadConfig {
 /// * `path` - Path to the HDF5 file
 /// * `dataset_name` - Name of the dataset containing events (default: "events")
 #[cfg(not(windows))]
+#[cfg(feature = "hdf5")]
 pub fn load_events_from_hdf5(
     path: &str,
     dataset_name: Option<&str>,
@@ -639,6 +642,7 @@ fn validate_coordinates(x: u16, y: u16) -> bool {
 
 /// Call Python fallback for Prophesee HDF5 format
 #[cfg(all(feature = "python", not(windows)))]
+#[cfg(feature = "hdf5")]
 fn call_python_prophesee_fallback(path: &str) -> hdf5_metno::Result<DataFrame> {
     Python::with_gil(|py| {
         // Import the Python fallback module
@@ -757,6 +761,7 @@ fn call_python_prophesee_fallback(path: &str) -> hdf5_metno::Result<DataFrame> {
 
 /// Try to decode Prophesee HDF5 data using our Rust ECF decoder
 #[cfg(not(windows))]
+#[cfg(feature = "hdf5")]
 fn try_rust_ecf_decoder(
     _cd_group: &hdf5_metno::Group,
     _events_dataset: &hdf5_metno::Dataset,
@@ -954,6 +959,7 @@ pub fn load_events_with_config(
 
     match detection_result.format {
         #[cfg(not(windows))]
+        #[cfg(feature = "hdf5")]
         EventFormat::HDF5 => {
             let events = load_events_from_hdf5(path, None)?;
             // Apply filters to the loaded events
@@ -965,6 +971,7 @@ pub fn load_events_with_config(
             Ok(events)
         }
         #[cfg(windows)]
+        #[cfg(feature = "hdf5")]
         EventFormat::HDF5 => Err(Box::new(std::io::Error::new(
             std::io::ErrorKind::Unsupported,
             "HDF5 support is disabled on Windows due to build complexity.",
@@ -1419,6 +1426,7 @@ pub mod python {
                     .collect()?
             }
             #[cfg(not(windows))]
+            #[cfg(feature = "hdf5")]
             EventFormat::HDF5 => {
                 // HDF5: Convert 0/1 to -1/1 for proper polarity encoding
                 df.lazy()
@@ -1777,6 +1785,7 @@ pub mod python {
     #[pyfunction]
     #[pyo3(name = "save_events_to_hdf5")]
     #[cfg(not(windows))]
+    #[cfg(feature = "hdf5")]
     pub fn save_events_to_hdf5_py(
         xs: PyReadonlyArray1<i64>,
         ys: PyReadonlyArray1<i64>,
@@ -1945,6 +1954,7 @@ pub mod python {
     pub fn get_format_description_py(format: &str) -> PyResult<String> {
         let event_format = match format {
             "Text" => EventFormat::Text,
+            #[cfg(feature = "hdf5")]
             "HDF5" => EventFormat::HDF5,
             "AER" => EventFormat::AER,
             "AEDAT 1.0" => EventFormat::AEDAT1,
